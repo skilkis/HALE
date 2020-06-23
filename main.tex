@@ -1,0 +1,73 @@
+\documentclass[11pt,a4paper,reqno,fancyheader]{tudelft-light/report}
+
+\title[Aeroelastic\\ Analysis of a HALE UAV]{Aeroelastic Analysis of a HALE UAV}
+\subtitle{An Investigation Using the Typical Section}
+\author{San Kilkis | 4192028}  % {Name | Student Number}
+\course{[AE4ASM506] Aeroelasticity}
+\supervisor{Dr. Roeland de Breuker}
+\abstract{\input{examples/abstract.tex}}
+
+\begin{document}
+
+\makecover[theme=dark, fill opacity=0]
+\maketitle
+
+%Document Part I: Front matter
+\begingroup
+\pagenumbering{roman} % Roman page numbers (I, II, III)
+
+    %Summary
+    %\input{summary} % Summary
+    %\addcontentsline{toc}{chapter}{Summary} % Adding the Summary to the ToC
+
+    %Table of Contents
+    \renewcommand{\contentsname}{Table of Contents}
+    \begingroup
+        \tableofcontents
+        \pagestyle{empty} % Removes fancy header and footer
+        \thispagestyle{empty} % Ensures that page number can be overwritten
+        \renewcommand{\thepage}{ToC} % Renames
+        \setcounter{page}{0}
+        \cleardoublepage
+    \endgroup
+
+    %List of Symbols
+    \printnomenclature[50pt]
+
+    %List of Figures
+    \listoffigures
+    \addcontentsline{toc}{chapter}{List of Figures}
+
+    %List of Tables
+    \listoftables
+    \addcontentsline{toc}{chapter}{List of Tables}
+\endgroup
+\cleardoublepage
+
+%Document Part II: Main Matter
+\begingroup
+\pagenumbering{arabic}
+
+    %Chapters:
+    \import{chapters/}{introduction}
+    \import{chapters/}{assignment}
+    \import{chapters/}{conclusion}
+    % \import{examples/}{latex_elements}
+    %ADD CHAPTERS HERE
+
+    %References:
+    \begingroup % Creates Separate Group from the Report
+    \raggedright % Removes Justification
+    %\nocite{*} % Disables biblatex from checking if all references are cited
+    \cleardoublepage
+    \phantomsection
+    \addcontentsline{toc}{chapter}{\BibliographyName}
+    \printbibliography[title={\BibliographyName}] % Renames Bibliography
+    \endgroup
+
+    %Appendices:
+    \begin{appendices}
+        \import{examples/}{listing}
+    \end{appendices}
+\endgroup
+\end{document}
