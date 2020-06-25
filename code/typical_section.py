@@ -10,16 +10,19 @@ import math
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import dufte
 import matplotlib
 import numpy as np
 import rich
 import scipy
+from gammapy.geometry.airfoil import Airfoil, NACA4Airfoil
 from matplotlib import pyplot as plt
 from rich.table import Table
 from scipy import optimize
+from sectionproperties.analysis.cross_section import CrossSection
+from sectionproperties.pre.sections import Geometry
 
 
 @dataclass(frozen=True)
@@ -414,6 +417,132 @@ def plot_optimizer_results(results: Dict[TSOptimizer, dict]) -> None:
     plt.show()
 
 
+class Wingbox(Geometry):
+    """Creates a hollow airfoil countoured wingbox section.
+
+    Args:
+        airfoil: A :py:class:`Airfoil` instance
+        x_start: Normalized start location of the wingbox along the
+            airfoil chord length
+        x_end: Normalized termination location of the wingbox along the
+            airfoil chord length
+        t_fs: Normalized thickness of the front spar web
+        t_rs: Normalized thickness of the rear spar web
+        t_skin: Normalized thickness of the wingbox upper/lower skin
+        num: Number of points used to sample the upper and lower
+            surfaces of the wingbox
+        shift: The translation vector (x, y) applied to the airfoil
+    """
+
+    def __init__(
+        self,
+        airfoil: Airfoil = NACA4Airfoil("0012"),
+        x_start: float = 0.3,
+        x_stop: float = 0.7,
+        t_fs: float = 0.01,
+        t_rs: float = 0.01,
+        t_skin: float = 0.01,
+        num: int = 20,
+        shift: Tuple[float, float] = (0, 0),
+    ):
+        self.airfoil = airfoil
+        self.x_start = x_start
+        self.x_end = x_stop
+        self.t_fs = t_fs
+        self.t_rs = t_rs
+        self.t_skin = t_skin
+        self.num = num
+        self.shift = shift
+
+    @cached_property
+    def points(self) -> np.ndarray:
+        """All points that define the wingbox geometry."""
+        topology = (
+            self.inner_points,
+            self.outer_points,
+        )
+        return np.vstack(topology)
+
+    @cached_property
+    def holes(self) -> np.ndarray:
+        """Midpoint specifying the interior region of the airfoil."""
+        x_mid = np.array([(self.x_end + self.x_start) / 2])
+        bot_midpoint = self.airfoil.lower_surface_at(x_mid)
+        top_midpoint = self.airfoil.upper_surface_at(x_mid)
+        return bot_midpoint + ((top_midpoint - bot_midpoint) / 2)
+
+    @cached_property
+    def facets(self) -> List[Tuple[int, int]]:
+        """Topology of :py:attr:`points` describing connectivity."""
+        n_inner = self.inner_points.shape[0]
+        n_outer = self.outer_points.shape[0]
+        return [
+            *self.get_facets(n_inner),
+            *self.get_facets(n_outer, start_idx=n_inner),
+        ]
+
+    @cached_property
+    def control_points(self) -> np.ndarray:
+        """A single point inside the top-left corner of the wingbox."""
+        x_left_spar = np.array(
+            [self.x_start + self.t_fs / 2], dtype=np.float64
+        )
+        bot_pt = self.airfoil.lower_surface_at(x_left_spar)
+        top_pt = self.airfoil.upper_surface_at(x_left_spar)
+        return bot_pt + ((top_pt - bot_pt) / 2)
+
+    @cached_property
+    def perimeter(self) -> List[int]:
+        """Indices of points making up the outer airfoil."""
+        n_points, _ = self.outer_points.shape
+        return list(range(n_points))
+
+    @cached_property
+    def outer_points(self) -> np.ndarray:
+        """Outermost points on the top and bottom of the wingbox."""
+        x_start, x_stop = self.x_start, self.x_end
+        sample_u = np.linspace(x_start, x_stop, num=self.num)
+        top_pts = self.airfoil.upper_surface_at(sample_u)
+        bot_pts = self.airfoil.lower_surface_at(sample_u[::-1])
+        return np.vstack((top_pts, bot_pts))
+
+    @cached_property
+    def inner_points(self):
+        """Inner points on the top and bottom of the wingbox."""
+        t_s = self.t_skin
+        x_start, x_stop = self.x_start + self.t_fs, self.x_end - self.t_rs
+        sample_u = np.linspace(x_start, x_stop, num=self.num)
+        top_pts = self.airfoil.upper_surface_at(sample_u) - (0, t_s)
+        bot_pts = self.airfoil.lower_surface_at(sample_u[::-1]) + (0, t_s)
+        return np.vstack((top_pts, bot_pts))
+
+    @staticmethod
+    def get_facets(n_points: int, start_idx: int = 0) -> List[Tuple[int, int]]:
+        """List of tuples describing connectivity of curve points.
+
+        Args:
+            n_points: Number of points that describe the curve
+            start_idx: Starting index of the first point of the curve.
+                Defaults to 0.
+
+        Returns:
+            Connectivity of curve points comprised of the indices
+            describing the location of points within an array. For a
+            triangle of 3 points the connectivity would be as follows::
+
+                [(0, 1), (1, 2), (2, 0)]
+        """
+        return [
+            # Generates pairs of numbers [(0, 1), (1, 2)] using zip
+            *zip(
+                range(start_idx, start_idx + n_points),
+                range(start_idx + 1, start_idx + n_points),
+            ),
+            # Closing the curve (end index to start index)
+            (start_idx + n_points - 1, start_idx),
+        ]
+
+
 if __name__ == "__main__":
     wing = Wing()
     opt_results = run_optimizers(wing)
@@ -422,3 +551,20 @@ if __name__ == "__main__":
     torsion_ts = tuple(opt_results.values())[1]["ts_opt"]
     steady_aero = SteadyAerodynamicModel(torsion_ts, AmbientCondition())
     print(steady_aero.divergence_speed)
+    airfoil = NACA4Airfoil("naca0012")
+    wingbox = Wingbox(
+        airfoil=airfoil,
+        x_start=0.25,
+        x_stop=0.7,
+        t_fs=0.005,
+        t_rs=0.04,
+        t_skin=0.01,
+        num=20,
+    )
+    wingbox.plot()
+    mesh = wingbox.create_mesh(mesh_sizes=[1])
+    section = CrossSection(wingbox, mesh)
+    section.plot_mesh()
+    section.calculate_geometric_properties()
+    section.calculate_warping_properties()
+    section.plot_centroids()
