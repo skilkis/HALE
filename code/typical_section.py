@@ -810,27 +810,105 @@ class UnsteadyAeroelasticModel(AeroelasticModel):
         return np.zeros((8, 1), dtype=np.float64)
 
 
-def plot_optimizer_results(results: Dict[TSOptimizer, dict]) -> None:
-    """Plots error of each specialized :py:class:`TSOptimizer`."""
-    plt.style.use(dufte.style)
-    fig, ax = plt.subplots()
-    ax.set_yscale("log")
-    ax.set_ylabel(
-        r"Squared Residual $\left[\frac{\mathrm{rad}^2}{\mathrm{s}^2}\right]$"
-    )
-    ax.set_xlabel("Half-Span [m]")
+class FEMAnalysisMixin:
+    """Defines derived properties from a FEM analysis.
 
-    for opt, _ in results.items():
-        opt.plot_objective(ax)
-    dufte.legend()
-    plt.show()
-
-
-class Wingbox(Geometry):
-    """Creates a hollow airfoil countoured wingbox section.
+    The main purpose of this class is to make it simpler to run and
+    access the results of the a FEM analysis for use in an optimization.
+    This FEM analysis is run lazily and will evaluate only when a
+    attributes that require them are accessed.
 
     Args:
-        airfoil: A :py:class:`Airfoil` instance
+        geometry: A :py:class:`Geometry` instance.
+        mesh_size: Maximum allowable relative mesh size. Defaults to
+            :py:data:`math.inf`.
+    """
+
+    mesh_size: float = math.inf
+
+    @cached_property
+    def section(self) -> CrossSection:
+        """Analysis :py:class:`CrossSection` object."""
+        return CrossSection(self, self.mesh)
+
+    @cached_property
+    def mesh(self) -> MeshInfo:
+        """Meshes :py:attr:`wingbox` using MeshPy."""
+        return self.create_mesh(mesh_sizes=[self.mesh_size])
+
+    @property
+    def bending_inertia(self) -> float:
+        """Area moment of inertia in SI meter to the fourth.
+
+        Note:
+            This is the inertia I_xx about the chordline of the
+            typical section.
+        """
+        self.ensure_geometry_has_run()
+        return self.section.get_ic()[0]
+
+    @property
+    def chordwise_inertia(self) -> float:
+        """Area moment of inertia in SI meter to the fourth.
+
+        Note:
+            This is the inertia I_zz on about the vertical
+            (heave) axis of the typical section.
+        """
+        self.ensure_geometry_has_run()
+        return self.section.get_ic()[1]
+
+    @property
+    def polar_inertia(self) -> float:
+        """Polar area moment of inertia in SI meter to the fourth."""
+        return self.bending_inertia + self.chordwise_inertia
+
+    @property
+    def area(self) -> float:
+        """Cross-sectional area of the supplied :py:attr:`geometry`."""
+        self.ensure_geometry_has_run()
+        return self.section.get_area()
+
+    @property
+    def torsion_constant(self) -> float:
+        """Torsional constant, J, in SI meter to the fourth."""
+        self.ensure_warping_has_run()
+        return self.section.get_j()
+
+    @property
+    def centroid(self) -> Tuple[float, float]:
+        """Location of the area centroid and the center of gravity."""
+        self.ensure_geometry_has_run()
+        self.ensure_warping_has_run()
+        return self.section.get_c()
+
+    @property
+    def shear_center(self) -> Tuple[float, float]:
+        """Location of the shear center as computed by FEM."""
+        self.ensure_warping_has_run()
+        return self.section.get_sc()
+
+    _has_geometry_run = False
+    _has_warping_run = False
+
+    def ensure_geometry_has_run(self) -> None:
+        """Ensure that geometric analysis has already run."""
+        if not self._has_geometry_run:
+            self.section.calculate_geometric_properties()
+            self._has_geometry_run = True
+
+    def ensure_warping_has_run(self) -> None:
+        """Ensure that warping (shear) analysis has already run."""
+        if not self._has_warping_run:
+            self.ensure_geometry_has_run()
+            self.section.calculate_warping_properties()
+            self._has_warping_run = True
+
+
+class WingBox(Geometry, FEMAnalysisMixin):
+    """Creates a hollow airfoil countoured wingbox geometry.
+
+    Args:
         x_start: Normalized start location of the wingbox along the
             airfoil chord length
         x_end: Normalized termination location of the wingbox along the
@@ -838,30 +916,34 @@ class Wingbox(Geometry):
         t_fs: Normalized thickness of the front spar web
         t_rs: Normalized thickness of the rear spar web
         t_skin: Normalized thickness of the wingbox upper/lower skin
-        num: Number of points used to sample the upper and lower
+        airfoil: A :py:class:`Airfoil` instance
+        n_points: Number of points used to sample the upper and lower
             surfaces of the wingbox
         shift: The translation vector (x, y) applied to the airfoil
+        mesh_size: Defines the maximum possible mesh element size
     """
 
     def __init__(
         self,
-        airfoil: Airfoil = NACA4Airfoil("0012"),
         x_start: float = 0.3,
-        x_stop: float = 0.7,
+        x_end: float = 0.7,
         t_fs: float = 0.01,
         t_rs: float = 0.01,
         t_skin: float = 0.01,
-        num: int = 20,
+        airfoil: Airfoil = NACA4Airfoil("0012"),
+        n_points: int = 20,
         shift: Tuple[float, float] = (0, 0),
+        mesh_size: float = math.inf,
     ):
-        self.airfoil = airfoil
         self.x_start = x_start
-        self.x_end = x_stop
+        self.x_end = x_end
         self.t_fs = t_fs
         self.t_rs = t_rs
         self.t_skin = t_skin
-        self.num = num
+        self.airfoil = airfoil
+        self.n_points = n_points
         self.shift = shift
+        self.mesh_size = mesh_size
 
     @cached_property
     def points(self) -> np.ndarray:
@@ -872,6 +954,8 @@ class Wingbox(Geometry):
         )
         return np.vstack(topology)
 
+    # TODO fix holes so that if a solid geometry is defined, a hole is
+    # not created
     @cached_property
     def holes(self) -> np.ndarray:
         """Midpoint specifying the interior region of the airfoil."""
@@ -910,7 +994,7 @@ class Wingbox(Geometry):
     def outer_points(self) -> np.ndarray:
         """Outermost points on the top and bottom of the wingbox."""
         x_start, x_stop = self.x_start, self.x_end
-        sample_u = np.linspace(x_start, x_stop, num=self.num)
+        sample_u = np.linspace(x_start, x_stop, num=self.n_points)
         top_pts = self.airfoil.upper_surface_at(sample_u)
         bot_pts = self.airfoil.lower_surface_at(sample_u[::-1])
         return np.vstack((top_pts, bot_pts))
@@ -920,7 +1004,7 @@ class Wingbox(Geometry):
         """Inner points on the top and bottom of the wingbox."""
         t_s = self.t_skin
         x_start, x_stop = self.x_start + self.t_fs, self.x_end - self.t_rs
-        sample_u = np.linspace(x_start, x_stop, num=self.num)
+        sample_u = np.linspace(x_start, x_stop, num=self.n_points)
         top_pts = self.airfoil.upper_surface_at(sample_u) - (0, t_s)
         bot_pts = self.airfoil.lower_surface_at(sample_u[::-1]) + (0, t_s)
         return np.vstack((top_pts, bot_pts))
@@ -951,29 +1035,427 @@ class Wingbox(Geometry):
             (start_idx + n_points - 1, start_idx),
         ]
 
+    def plot_airfoil(self, ax: matplotlib.axes.Axes, n_points: float = 100):
+        """Plot :py:attr:`airfoil` on the provided ``ax``.
+
+        Args:
+            ax: Plot axes onto which the airfoil should be plotted.
+            n_points: Number of points used to sample the upper and
+                lower surfaces of the airfoil.
+        """
+        x = 0.5 * (1 - np.cos(np.linspace(0, np.pi, num=n_points)))
+
+        pts_lower = self.airfoil.lower_surface_at(x[-1:0:-1])
+        pts_upper = self.airfoil.upper_surface_at(x)
+        pts = np.vstack((pts_lower, pts_upper))
+
+        ax.plot(pts[:, 0], pts[:, 1], label="Airfoil Surface", color="grey")
+        ax.set_xlabel("Normalized Chord Location (x/c)")
+        ax.set_ylabel("Normalized Thickness (t/c)")
+        plt.axis("equal")
+
+    def plot_geometry(self, n_points: float = 100) -> FigureHandle:
+        """Plots the geometry of the current :py:class:`WingBox`."""
+        plt.style.use(dufte.style)
+        fig, ax = plt.subplots()
+
+        self.plot_airfoil(ax, n_points=n_points)
+        super().plot_geometry(ax)
+        return fig, ax
+
+    def plot_mesh(self, alpha: float = 1.0) -> FigureHandle:
+        """Plots the mesh geometry."""
+        fig, ax = self.plot_geometry()
+        self.section.plot_mesh(ax, alpha=alpha)
+        return fig, ax
+
+    def plot_centroids(self) -> FigureHandle:
+        """Plots the mesh, centroids, and the principal axes."""
+        fig, ax = self.plot_mesh()
+
+        (x_s, y_s) = self.shear_center
+        ax.scatter(
+            x_s, y_s, c="r", marker="+", s=100, label="Shear Center",
+        )
+
+        (x_pc, y_pc) = self.centroid
+        ax.scatter(
+            x_pc,
+            y_pc,
+            facecolors="none",
+            edgecolors="r",
+            marker="o",
+            s=100,
+            label="Area Centroid",
+        )
+
+        post.draw_principal_axis(
+            ax,
+            self.section.section_props.phi * np.pi / 180,
+            self.section.section_props.cx,
+            self.section.section_props.cy,
+        )
+        ax.legend(loc="center left", bbox_to_anchor=(1, 0.5))
+        return fig, ax
+
+
+class DesignVariable(NamedTuple):
+    """Defines the running variable(s) in an optimization problem."""
+
+    initial: float
+    lower: float = None
+    upper: float = None
+
+
+class OptimizationMeta(ABCMeta):
+    """Runs post initialization action to gather design variables."""
+
+    def __call__(cls, *args, **kwargs):
+        """Runs :py:meth:`__post_init__` after object initialization."""
+        obj = super().__call__(*args, **kwargs)
+        obj.__post_init__()
+        return obj
+
+
+class Optimization(metaclass=OptimizationMeta):
+    """Defines an base optimization problem using scipy.minimize.
+
+    Attributes:
+        default_options: Default options passed to the optimizer.
+        history: All design vectors used to evaluate
+            :py:meth:`objective_function`
+    """
+
+    default_options = {}
+    history: Dict[str, List[float]] = None
+    design_vector: Dict[str, DesignVariable] = None
+    normalize: bool = False
+    verbose: bool = False
+
+    def __post_init__(self):
+        """Traverses the MRO in reverse to get all design variables.
+
+        Iterating in reverse ensures that the specialized class design
+        variable or the one optionally passed during initialized is used
+        instead of the super class value.
+        """
+        self.design_vector = {}
+        for cls in reversed(self.__class__.mro()):
+            if issubclass(cls, Optimization) or cls is Optimization:
+                self.design_vector.update(self.get_design_variables(cls))
+        self.design_vector.update(self.get_design_variables(self))
+        self.history = {name: [] for name in self.variable_names}
+
+    @property
+    def bounds(self) -> List[Tuple[float, float]]:
+        """Lower and upper bounds of each design variable."""
+        return [(v.lower, v.upper) for v in self.design_vector.values()]
+
+    @property
+    def normalized_bounds(self) -> List[Tuple[float, float]]:
+        """Normalized Lower and upper bounds of each design variable."""
+        return [
+            (v.lower / v.initial, v.upper / v.initial)
+            for v in self.design_vector.values()
+        ]
+
+    @property
+    def x0(self) -> np.array:
+        """Initial design vector of the optimization."""
+        return np.array(
+            [v.initial for v in self.design_vector.values()], dtype=np.float64,
+        )
+
+    @property
+    def variable_names(self) -> Tuple[str, ...]:
+        """Names of the variables ordered as per the design vector."""
+        return tuple(self.design_vector.keys())
+
+    @staticmethod
+    def get_design_variables(instance) -> Dict[str, DesignVariable]:
+        """Gets all :py:class:`DesignVariable` in ``instance``."""
+        return {
+            attr: obj
+            for attr, obj in vars(instance).items()
+            if isinstance(obj, DesignVariable)
+        }
+
+    def optimize(self, **optimization_options) -> dict:
+        """Runs the optimization and returns the optimization result."""
+        self.default_options.update(**optimization_options)
+        result = optimize.minimize(
+            self.objective_function,
+            x0=self.x0 / self.x0 if self.normalize else self.x0,
+            bounds=self.normalized_bounds if self.normalize else self.bounds,
+            options=self.default_options,
+            callback=self.log,
+        )
+        return result
+
+    def log(self, x) -> None:
+        """Logs the current design vector ``x``."""
+        x = self.unnormalize(x)
+        for name, variable in zip(self.variable_names, x):
+            self.history[name].append(variable)
+        if self.verbose:
+            print(*zip(self.variable_names, x))
+
+    @abstractmethod
+    def objective_function(self, x: np.ndarray) -> float:
+        """A scalar objective function of the optimization problem.
+
+        Args:
+            x: Design vector of the optimization problem
+        """
+
+    def unnormalize(self, x) -> float:
+        """Turns ``x`` into physical quantities if required."""
+        return x * self.x0 if self.normalize else x
+
+
+class TSOptimization(Optimization):
+    """Abstract Base Class (ABC) of a Typical Section optimization."""
+
+    eta_ts = DesignVariable(initial=0.75, lower=1e-6, upper=1)
+
+    def optimize(self) -> dict:
+        """Optimizes TS location using :py:meth:`objective_function`."""
+        result = super().optimize()
+        # Setting :py:attr:`eta_ts_final` to final optimized value.
+        # The optimization result "x" is removed and renamed to "eta_ts"
+        result["eta_ts"] = result.pop("x")[0]
+        result["ts_opt"] = TypicalSection(eta_ts=result["eta_ts"])
+        return result
+
+    @staticmethod
+    @abstractmethod
+    def objective_function(eta_ts: Union[float, np.ndarray]) -> float:
+        """Difference between calculated and measured frequencies."""
+
+    @property
+    @abstractmethod
+    def plot_name(self) -> str:
+        """Sets the label of the TS location optimization in plots."""
+
+    def plot_objective(
+        self, ax: Optional[matplotlib.axes.Axes] = None
+    ) -> matplotlib.axes.Axes:
+        """Plots :py:meth:`objective_function` across the half-span."""
+        ax = plt.subplots()[-1] if ax is None else ax
+        eta_values = np.linspace(0.3, 1.0, num=1000)
+        vectorized_obj = np.vectorize(self.objective_function)
+        ax.plot(
+            eta_values * TypicalSection.half_span,
+            vectorized_obj(eta_values),
+            label=self.plot_name,
+        )
+        return ax
+
+
+class HeaveTSOptimization(TSOptimization):
+    """Optimizes TS location to match heave frequency."""
+
+    plot_name = "Heave"
+
+    @staticmethod
+    def objective_function(eta_ts: Union[float, np.ndarray]) -> float:
+        """Returns the squared residual w.r.t the heave frequency."""
+        ts = TypicalSection(eta_ts=eta_ts)
+        sm = StructuralModel(typical_section=ts)
+        return (sm.coupled_heave_frequency - ts.measured_heave_frequency) ** 2
+
+
+class TorsionTSOptimization(TSOptimization):
+    """Optimizes TS location to match torsion frequency."""
+
+    plot_name = "Torsion"
+
+    @staticmethod
+    def objective_function(eta_ts: Union[float, np.ndarray]) -> float:
+        """Returns the squared residual w.r.t the torsion frequency."""
+        ts = TypicalSection(eta_ts=eta_ts)
+        sm = StructuralModel(typical_section=ts)
+        return (
+            sm.coupled_torsion_frequency - ts.measured_torsion_frequency
+        ) ** 2
+
+
+class SimultaneousTSOptimization(TSOptimization):
+    """Optimizes TS location to match both torsion/heave frequency."""
+
+    plot_name = "Simultaneous"
+
+    @staticmethod
+    def objective_function(eta_ts: Union[float, np.ndarray]) -> float:
+        """Returns the RSS of both the heave and torsion residual.
+
+        Note:
+            RSS stands for Residual Sum of Squares where the
+            residual is defined as the difference between the
+            frequency calculated at the typical section and the
+            measured frequency of the aircraft. The goal is to
+            minimize the residual for both the heave and torsional
+            frequency simultaneously.
+        """
+        torsion_rss = TorsionTSOptimization.objective_function(eta_ts=eta_ts)
+        heave_rss = HeaveTSOptimization.objective_function(eta_ts=eta_ts)
+        return torsion_rss + heave_rss
+
+
+class WingBoxOptimization(Optimization):
+    """Defines the design variables of a wingbox optimization."""
+
+    x_start = DesignVariable(initial=0.25, lower=0.1, upper=0.45)
+    x_end = DesignVariable(initial=0.7, lower=0.55, upper=0.95)
+    t_fs = DesignVariable(initial=5e-3, lower=1e-3, upper=0.05)
+    t_rs = DesignVariable(initial=0.04, lower=1e-3, upper=0.05)
+    t_skin = DesignVariable(initial=0.01, lower=1e-3, upper=0.01)
+    normalize = True
+    default_options = {"gtol": 1e-12, "ftol": 1e-12, "disp": 100}
+
+    def __init__(self, typical_section: TypicalSection):
+        self.typical_section = typical_section
+
+    def optimize(self) -> dict:
+        """Optimizes wingbox geometry to match wing properties."""
+        result = super().optimize()
+        result["wingbox"] = self.get_wingbox(result["x"])
+        return result
+
+    def get_wingbox(self, x) -> WingBox:
+        """Instantiates a :py:class:`WingBox` with ``x``."""
+        x = self.unnormalize(x)
+        kwargs = dict(zip(self.variable_names, x))
+        return WingBox(
+            **kwargs, airfoil=self.typical_section.airfoil, n_points=5
+        )
+
+
+class GeometricWingBoxOptimization(WingBoxOptimization):
+    """Optimizes the wingbox to match geometric properties."""
+
+    def objective_function(self, x: np.ndarray) -> float:
+        """Returns the RSS error of the shear center and CG."""
+        wbox = self.get_wingbox(x)
+        ts = self.typical_section
+        shear_error = (wbox.shear_center[0] - ts.elastic_axis) ** 2
+        centroid_error = (wbox.centroid[0] - ts.center_of_gravity) ** 2
+        # i_theta = (0.75 / wbox.area) * (
+        #     wbox.bending_inertia + wbox.chordwise_inertia
+        # )
+        print(shear_error, centroid_error)
+        return shear_error + centroid_error
+
+
+class AeroelasticWingBoxOptimization(WingBoxOptimization):
+    """Optimizes the wingbox to match divergence and flutter speed."""
+
+    def __init__(
+        self, typical_section: TypicalSection, initial_wing_box: WingBox,
+    ):
+        self.typical_section = typical_section
+        self.initial_wing_box = initial_wing_box
+
+        # Setting initial design varialbes to initial wing box values
+        for k, v in self.get_design_variables(WingBoxOptimization).items():
+            initial = getattr(initial_wing_box, k)
+            setattr(self, k, DesignVariable(initial, v.lower, v.upper))
+
+    @property
+    def target_velocity(self):
+        return 37.15
+
+    def objective_function(self):
+        pass
+
+    def run_aeroelastic_model(self, wingbox):
+        pass
+
+
+def run_optimizations(
+    print_results: bool = True,
+) -> Dict[TSOptimization, dict]:
+    """Runs each specialized :py:class:`TSOptimizer`."""
+    optimizers = (
+        HeaveTSOptimization,
+        TorsionTSOptimization,
+        SimultaneousTSOptimization,
+    )
+
+    results = defaultdict(dict)
+    for optimizer in optimizers:
+        opt = optimizer()
+        results[optimizer]["instance"] = opt
+        results[optimizer].update(opt.optimize())
+
+    if print_results:
+        table = Table(title="Typical Section Optimization Results")
+
+        table.add_column("Optimizer", justify="left", style="cyan")
+        table.add_column("TS Location m", justify="center")
+        table.add_column("Span Fraction", justify="center")
+        table.add_column("Squared Residual", justify="center", style="red")
+
+        for opt, result in results.items():
+            table.add_row(
+                opt.__name__,
+                f"{result['eta_ts'] * TypicalSection().half_span:.4f}",
+                f"{result['eta_ts']:.4f}",
+                f"{result['fun']:.4e}",
+            )
+        rich.print(table)
+    return results
+
+
+def plot_optimization_results(results: Dict[TSOptimization, dict]) -> None:
+    """Plots error of each specialized :py:class:`TSOptimizer`."""
+    plt.style.use(dufte.style)
+    fig, ax = plt.subplots()
+    ax.set_yscale("log")
+    ax.set_ylabel(
+        r"Squared Residual $\left[\frac{\mathrm{rad}^2}{\mathrm{s}^2}\right]$"
+    )
+    ax.set_xlabel("Half-Span [m]")
+
+    for result in results.values():
+        result["instance"].plot_objective(ax)
+    dufte.legend()
+    plt.show()
+    return fig, ax
+
 
 if __name__ == "__main__":
     wing = Wing()
-    opt_results = run_optimizers(wing)
-    plot_optimizer_results(opt_results)
+    opt_results = run_optimizations(wing)
+    plot_optimization_results(opt_results)
 
-    torsion_ts = tuple(opt_results.values())[1]["ts_opt"]
-    steady_aero = SteadyAerodynamicModel(torsion_ts, AmbientCondition())
-    print(steady_aero.divergence_speed)
-    airfoil = NACA4Airfoil("naca0012")
-    wingbox = Wingbox(
-        airfoil=airfoil,
-        x_start=0.25,
-        x_stop=0.7,
-        t_fs=0.005,
-        t_rs=0.04,
-        t_skin=0.01,
-        num=20,
-    )
-    wingbox.plot()
-    mesh = wingbox.create_mesh(mesh_sizes=[1])
-    section = CrossSection(wingbox, mesh)
-    section.plot_mesh()
-    section.calculate_geometric_properties()
-    section.calculate_warping_properties()
-    section.plot_centroids()
+    torsion_ts = opt_results[TorsionTSOptimization]["ts_opt"]
+    aero_model = UnsteadyAeroelasticModel(torsion_ts, velocity=30)
+    print("Divergence Velocity:\n", aero_model.divergence_speed)
+    print("Flutter Velocity:\n", aero_model.flutter_speed)
+    _, _, xout = aero_model.simulate(5, np.linspace(0, 10, 1000))
+    # airfoil = NACA4Airfoil("naca0012")
+    # w_opt = GeometricWingBoxOptimization(wing, torsion_ts)
+    # result = w_opt.optimize()
+    # result["wingbox"].plot_centroids()
+    # w_aero_opt = AeroelasticWingBoxOptimization(
+    #     wing, torsion_ts, result["wingbox"]
+    # )
+
+    # Shear center and centroid at 0.5
+    # wbox = WingBox(
+    #     **dict(
+    #         [
+    #             ("x_start", 0.234542706789857),
+    #             ("x_end", 0.6839615721216693),
+    #             ("t_fs", 0.005218501897141772),
+    #             ("t_rs", 0.03969576206057929),
+    #             ("t_skin", 0.00967284680430912),
+    #         ]
+    #     )
+    # )
+    # wbox.plot_centroids()
+
+    # Maximum I_theta optimization
+    # wbox = WingBox(**dict([('x_start', 0.05), ('x_end', 0.95), ('t_fs', 0.009456086207970144), ('t_rs', 0.033624624987465566), ('t_skin', 0.001)]))
+    # wbox.plot_centroids()
