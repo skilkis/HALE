@@ -271,86 +271,269 @@ class StructuralModel:
         return math.sqrt(self.unit_torsion_stiffness / self.i_theta)
 
 
-class TSOptimizer(metaclass=ABCMeta):
-    """Abstract Base Class (ABC) of a Typical Section optimization."""
+class AeroelasticModel(StructuralModel, metaclass=ABCMeta):
+    """Specializes the structural model with aerodynamic coupling."""
 
-    def __init__(self, wing: Wing):
-        self.wing = wing
-
-    def optimize(self) -> dict:
-        """Optimizes TS location using :py:meth:`objective_function`."""
-        result = optimize.minimize(self.objective_function, [0.75])
-        # Setting :py:attr:`eta_ts_final` to final optimized value.
-        # The optimization result "x" is removed and renamed to "eta_ts"
-        result["eta_ts"] = result.pop("x")[0]
-        result["ts_opt"] = TypicalSection(
-            wing=self.wing, eta_ts=result["eta_ts"]
-        )
-        return result
-
-    @abstractmethod
-    def objective_function(self, eta_ts: float) -> float:
-        """Difference between calculated and measured frequencies."""
+    def __init__(
+        self,
+        typical_section: TypicalSection,
+        velocity: float = 20,
+        density: float = 0.0889,
+    ):
+        super().__init__(typical_section)
+        self.velocity = velocity
+        self.density = density
 
     @property
     @abstractmethod
-    def plot_name(self) -> str:
-        """Sets the label of the TS location optimization in plots."""
+    def aerodynamic_mass_matrix(self):
+        """Relates aerodynamic force to the acceleration of the DoFs."""
+        pass
 
-    def plot_objective(
-        self, ax: Optional[matplotlib.axes.Axes] = None
-    ) -> matplotlib.axes.Axes:
-        """Plots :py:meth:`objective_function` across the half-span."""
-        ax = plt.subplots()[-1] if ax is None else ax
-        eta_values = np.linspace(0.3, 1.0, num=1000)
-        ax.plot(
-            eta_values * self.wing.half_span,
-            [self.objective_function(e) for e in eta_values],
-            label=self.plot_name,
+    @property
+    @abstractmethod
+    def aerodynamic_damping_matrix(self):
+        """Relates aerodynamic force to the velocity of the DoFs."""
+        pass
+
+    @property
+    @abstractmethod
+    def aerodynamic_stiffness_matrix(self):
+        """Relates aerodynamic force to the displacement of the DoFs."""
+        pass
+
+    @property
+    @abstractmethod
+    def aeroelastic_mass_matrix(self) -> np.ndarray:
+        """Coupled aerodynamic and structural mass matrix."""
+
+    @property
+    @abstractmethod
+    def aeroelastic_damping_matrix(self) -> np.ndarray:
+        """Coupled aerodynamic and structural damping matrix."""
+
+    @property
+    @abstractmethod
+    def aeroelastic_stiffness_matrix(self) -> np.ndarray:
+        """Coupled aerodynamic and structural stiffness matrix."""
+
+    @cached_property
+    def dynamic_pressure(self) -> float:
+        """Dynamic pressure, q, in SI Pascal."""
+        return 0.5 * self.density * self.velocity ** 2
+
+    @cached_property
+    def state_matrix(self) -> np.ndarray:
+        """Returns the state-matrix of the aeroelastic model.
+
+        The state-matrix is comprised of the 4 degrees of freedom of the
+        Linear Time Invariant (LTI) system. These are h_theta,
+        theta_dot, h, and theta.
+        """
+        state_matrix = np.zeros((4, 4), dtype=np.float64)
+        # Aeroelastic mass matrix
+        m_ae_inverse = np.linalg.inv(self.aeroelastic_mass_matrix)
+        state_matrix[:2, :2] = -m_ae_inverse @ self.aeroelastic_damping_matrix
+        state_matrix[:2, 2:] = (
+            -m_ae_inverse @ self.aeroelastic_stiffness_matrix
         )
-        return ax
+        # Setting identity matrix for first-order differential terms
+        state_matrix[(2, 3), (0, 1)] = 1
+        return state_matrix
+
+    def get_eigen_values_at(self, velocity: float) -> np.ndarray:
+        """Gets eigen values of the LTI system at ``velocity``."""
+        aero_model = self.__class__(
+            typical_section=self.typical_section,
+            velocity=velocity,
+            density=self.density,
+        )
+        return np.linalg.eig(aero_model.state_matrix)[0]
+
+    @cached_property
+    def flutter_speed(self) -> float:
+        """Dynamic flutter speed in SI meter per second.
+
+        The flutter boundary is detected by observing the real component
+        of the eigen-values of the system that have a non-zero imaginary
+        (oscillatory) component. At flutter at least one of
+        complex-conjugate eigen-values has a positive real value.
+        Therefore, at the flutter-boundary the eigen-values of this
+        complex conjugates transition from negative to positive and are
+        hence equal to zero.
+        """
+
+        def objective_function(velocity: np.ndarray) -> float:
+            eigen_values = self.get_eigen_values_at(velocity[0])
+            return np.product(eigen_values[eigen_values.imag != 0].real)
+
+        return optimize.fsolve(objective_function, x0=[50])[0]
+
+    @cached_property
+    def divergence_speed(self) -> float:
+        """Static divergence speed in SI meter per second.
+
+        The divergence speed is detected by observing the real
+        component of the eigen-values of the system. At divergence
+        """
+
+        def objective_function(velocity: np.ndarray) -> float:
+            eigen_values = self.get_eigen_values_at(velocity[0])
+            return np.product(eigen_values[eigen_values.imag == 0].real)
+
+        return optimize.fsolve(objective_function, x0=[50])[0]
+
+    @cached_property
+    def input_matrix(self) -> np.ndarray:
+        """State-space input matrix, B, without dynamic pressure."""
+        q = self.dynamic_pressure
+        m_ae_inverse = np.linalg.inv(self.aeroelastic_mass_matrix)
+        input_matrix = np.array(
+            [
+                -q
+                * self.typical_section.chord ** 2
+                * self.typical_section.lift_gradient,
+                q
+                * self.typical_section.chord ** 2
+                * self.typical_section.lift_gradient
+                * self.typical_section.lift_moment_arm,
+            ]
+            # Converting to a column vector to avoid shape mismatch
+        ).reshape((2, 1))
+        input_matrix = m_ae_inverse @ input_matrix
+        return np.vstack((input_matrix, np.zeros((2, 1), dtype=np.float64)))
+
+    @cached_property
+    def output_matrix(self) -> np.ndarray:
+        """State-space output matrix, C."""
+        return np.eye(4, dtype=np.float64)
+
+    @cached_property
+    def feedthrough_matrix(self) -> np.ndarray:
+        """State-space feedthrough or feedfoward matrix, D."""
+        return np.zeros((4, 1), dtype=np.float64)
+
+    def simulate(
+        self, alpha_0: float, time: np.ndarray, plot: bool = True,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Simulates response of the degrees of freedom.
+
+        Args:
+            alpha_0: Initial rigid Angle of Attack (AoA) of the wing
+            time: Discretized time array to run the simulation at
+            plot: Toggles plotting of the linear simulation results
+
+        We need to augment the state-matrix with the constant
+        aerodynamic moment term using:
+        https://math.stackexchange.com/a/2149853
+
+        THIS IS NO LONGER REQUIRED AS THE MOMENT IS ZERO DUE TO
+        THIN AIRFOIL THEORY
+        """
+        state_matrix = self.state_matrix
+        system = signal.StateSpace(
+            state_matrix,
+            self.input_matrix,
+            self.output_matrix,
+            self.feedthrough_matrix,
+        )
+        u = np.ones(time.shape, dtype=np.float64) * math.radians(alpha_0)
+        time, y_out, x_out = signal.lsim(system, u, time)
+        if plot:
+            self.plot_simulation(time, x_out)
+        return time, y_out, x_out
+
+    @staticmethod
+    def plot_simulation(time: np.ndarray, x_out: np.ndarray) -> None:
+        """Plots the degrees of freedom of the aeroelastic model."""
+        fig, axes = plt.subplots(nrows=4, sharex=True)
+        labels = [
+            r"$\dot{h}$ [m/s]",
+            r"$\dot{\theta}$ [deg/s]",
+            r"$h$ [m]",
+            r"$\theta$ [deg]",
+        ]
+        for i, (ax, label) in enumerate(zip(axes, labels)):
+            ax.plot(
+                time,
+                np.degrees(x_out[:, i]) if "theta" in label else x_out[:, i],
+            )
+            ax.set_ylabel(label, fontsize=12)
+            ax.yaxis.set_tick_params(labelsize=10, pad=1)
+        plt.xlabel("Time [s]", fontsize=12)
+        fig.align_ylabels(axes)
+
+    def plot_flutter_diagram(self):
+        fig, ax = plt.subplots()
+        v_range = np.linspace(0.1, 40, 1000)
+        eigen_values = [self.get_eigen_values_at(v).real for v in v_range]
+
+        ax.plot(v_range, eigen_values)
+        return fig, ax
 
 
-class HeaveTSOptimizer(TSOptimizer):
-    """Optimizes TS location to match heave frequency."""
+class SteadyAeroelasticModel(AeroelasticModel):
+    """Steady model with zero aerodynamic mass and damping."""
 
-    plot_name = "Heave"
+    @cached_property
+    def divergence_pressure(self) -> float:
+        """Divergence dynamic pressure in SI Pascal."""
+        eigen_values, _ = scipy.linalg.eig(
+            self.structural_stiffness_matrix,
+            self.aerodynamic_stiffness_matrix,
+        )
+        assert eigen_values[0] == math.inf
+        return eigen_values[-1].real
 
-    def objective_function(self, eta_ts: float) -> float:
-        """Returns the squared residual w.r.t the heave frequency."""
-        ts = TypicalSection(wing=self.wing, eta_ts=eta_ts)
-        return (ts.coupled_heave_frequency - self.wing.heave_frequency) ** 2
+    @cached_property
+    def divergence_speed(self) -> float:
+        """Divergence speed (velocity) in SI meter per second."""
+        return math.sqrt(2 * self.divergence_pressure / self.density)
 
+    @cached_property
+    def aerodynamic_mass_matrix(self) -> np.ndarray:
+        """Placeholder aerodynamic mass matrix."""
+        return np.zeros((2, 2), dtype=np.float64)
 
-class TorsionTSOptimier(TSOptimizer):
-    """Optimizes TS location to match torsion frequency."""
+    @cached_property
+    def aerodynamic_damping_matrix(self) -> np.ndarray:
+        """Placeholder aerodynamic damping mass matrix."""
+        return np.zeros((2, 2), dtype=np.float64)
 
-    plot_name = "Torsion"
+    @cached_property
+    def aerodynamic_stiffness_matrix(self) -> np.ndarray:
+        """Steady model aerodynamic stiffness matrix."""
+        c = self.typical_section.chord
+        cla = self.typical_section.lift_gradient
+        return np.array(
+            [
+                [0, -c * cla],
+                [0, c * cla * self.typical_section.lift_moment_arm],
+            ]
+        )
 
-    def objective_function(self, eta_ts: float) -> float:
-        """Returns the squared residual w.r.t the torsion frequency."""
-        ts = TypicalSection(wing=self.wing, eta_ts=eta_ts)
-        return (
-            ts.coupled_torsion_frequency - self.wing.torsion_frequency
-        ) ** 2
+    @property
+    def aeroelastic_mass_matrix(self) -> np.ndarray:
+        """Steady aeroelastic mass matrix."""
+        return self.structural_mass_matrix
 
+    @property
+    def aeroelastic_damping_matrix(self) -> np.ndarray:
+        """Steady aeroelastic damping matrix."""
+        return self.structural_damping_matrix
 
-class SimultaneousTSOptimizer(TSOptimizer):
-    """Optimizes TS location to match both torsion/heave frequency."""
-
-    plot_name = "Simultaneous"
-
-    def objective_function(self, eta_ts: float) -> float:
-        """Returns the RSS of both the heave and torsion residual.
+    @cached_property
+    def aeroelastic_stiffness_matrix(self) -> np.ndarray:
+        """Steady aeroelastic stiffness matrix.
 
         Note:
-            RSS stands for Residual Sum of Squares where the
-            residual is defined as the difference between the
-            frequency calculated at the typical section and the
-            measured frequency of the aircraft. The goal is to
-            minimize the residual for both the heave and torsional
-            frequency simultaneously.
+            The aerodynamic stiffness matrix reduces the apparent
+            structural stiffness of the wing.
         """
+        return (
+            self.structural_stiffness_matrix
+            - self.dynamic_pressure * self.aerodynamic_stiffness_matrix
+        )
 
         ts = TypicalSection(wing=self.wing, eta_ts=eta_ts)
         return (
