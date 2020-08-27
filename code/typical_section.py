@@ -535,36 +535,66 @@ class SteadyAeroelasticModel(AeroelasticModel):
             - self.dynamic_pressure * self.aerodynamic_stiffness_matrix
         )
 
-        ts = TypicalSection(wing=self.wing, eta_ts=eta_ts)
+
+class TheodorsenQuasiSteadyAeroelasticModel(AeroelasticModel):
+    """Quasi-Steady model derived from Theodorsen."""
+
+    @cached_property
+    def aerodynamic_mass_matrix(self) -> np.ndarray:
+        """Quasi-steady aerodynamic mass matrix."""
+        b = self.typical_section.half_chord
+        a = self.typical_section.elastic_axis_offset / b
         return (
-            (ts.coupled_heave_frequency - self.wing.heave_frequency) ** 2
-            + (ts.coupled_torsion_frequency - self.wing.torsion_frequency) ** 2
+            np.array([[-1, a * b], [a * b, -(b ** 2) * (0.125 + a ** 2)]])
+            * math.pi
+            * b ** 2
         )
 
-
-class AerodynamicModel(metaclass=ABCMeta):
-    def __init__(
-        self,
-        typical_section: TypicalSection,
-        ambient_condition: AmbientCondition,
-    ):
-        self.typical_section = typical_section
-        self.ambient_condition = AmbientCondition
+    @cached_property
+    def aerodynamic_damping_matrix(self) -> np.ndarray:
+        """Quasi-steady aerodynamic damping matrix."""
+        b = self.typical_section.half_chord
+        a = self.typical_section.elastic_axis_offset / b
+        return (
+            np.array(
+                [
+                    [-2, (2 * a - 2) * b],
+                    [(2 * a + 1) * b, (1 - 2 * a) * a * b ** 2],
+                ]
+            )
+            * math.pi
+            * b
+        )
 
     @cached_property
-    def aerodynamic_stiffness_matrix(self):
-        c = self.wing.chord
-        cla = self.wing.lift_gradient
-        return np.array([[0, -c * cla], [0, c * cla * self.lift_moment_arm]])
-
-    @property
-    def wing(self):
-        """Provides direct access to wing properties."""
-        return self.typical_section.wing
+    def aerodynamic_stiffness_matrix(self) -> np.ndarray:
+        """Quasi-steady aerodynamic stiffness matrix."""
+        b = self.typical_section.half_chord
+        a = self.typical_section.elastic_axis_offset / b
+        return np.array([[0, -2], [0, (2 * a + 1) * b]]) * math.pi * b
 
     @cached_property
-    def lift_moment_arm(self):
-        """Distance between the aerodynamic center and the elastic axis.
+    def aeroelastic_mass_matrix(self) -> np.ndarray:  # noqa: D102
+        return (
+            self.structural_mass_matrix
+            - self.density * self.aerodynamic_mass_matrix
+        )
+
+    @cached_property
+    def aeroelastic_damping_matrix(self) -> np.ndarray:  # noqa: D102
+        return (
+            self.structural_damping_matrix
+            - self.density * self.velocity * self.aerodynamic_damping_matrix
+        )
+
+    @cached_property
+    def aeroelastic_stiffness_matrix(self) -> np.ndarray:  # noqa: D102
+        return (
+            self.structural_stiffness_matrix
+            - self.density
+            * self.velocity ** 2
+            * self.aerodynamic_stiffness_matrix
+        )
 
         Note:
             This assumes that the aerodynamic center is located at
