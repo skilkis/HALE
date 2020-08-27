@@ -623,86 +623,191 @@ class LiegeQuasiSteadyAeroelasticModel(TheodorsenQuasiSteadyAeroelasticModel):
         )
 
 
-class SteadyAerodynamicModel(AerodynamicModel):
+class UnsteadyAeroelasticModel(AeroelasticModel):
+    """Unsteady model using Wagner's Indicial Function Approximation.
 
-    # TODO incorporate rigid aerodynamic matrices
-    # These are currently not needed as
+    Attributes:
+        psi_1: First Wagner function curve fitting constant
+        psi_2: Second Wagner function curve fitting
+        eps_1: First Pole of the Theodorsen function
+        eps_2: Second Pole of the Theodorsen function
+    """
+
+    psi_1: float = 0.165
+    psi_2: float = 0.335
+    eps_1: float = 0.0455
+    eps_2: float = 0.3
+
+    def reduced_time(self, time: float = 0) -> float:
+        """Non-dimensional reduced time, t_star.
+
+        This represents the number of half-chords travelled by the
+        typical section during the duration given by ``time``.
+        """
+        return time * self.velocity / self.typical_section.half_chord
+
+    def wagner_function(self, time: float = 0) -> float:
+        """Returns the Wagner function evaluated at ``time``."""
+        t_star = self.reduced_time(time)
+        return (
+            1
+            - self.psi_1 * np.exp(-self.eps_1 * t_star)
+            - self.psi_2 * np.exp(-self.eps_2 * t_star)
+        )
+
+    def wagner_function_derivative(self, time: float = 0) -> float:
+        """First-order derivative of the wagner function at ``time``."""
+        t_star = self.reduced_time(time)
+        u_over_b = self.velocity / self.typical_section.half_chord
+        return self.psi_1 * self.eps_1 * u_over_b * np.exp(
+            -self.eps_1 * t_star
+        ) + self.psi_2 * self.eps_2 * u_over_b * np.exp(-self.eps_2 * t_star)
 
     @cached_property
-    def divergence_pressure(self):
-        """Divergence dynamic pressure in SI Pascal."""
-        eigen_values, _ = scipy.linalg.eig(
-            self.typical_section.stiffness_matrix,
-            self.aerodynamic_stiffness_matrix,
-        )
-        assert eigen_values[0] == math.inf
-        return eigen_values[-1].real
+    def aerodynamic_mass_matrix(self) -> np.ndarray:
+        """Unsteady aerodynamic mass matrix."""
+        a = self.typical_section.elastic_axis_offset
+        b = self.typical_section.half_chord
+        return np.array([[1, -a * b], [-a * b, ((a * b) ** 2 + (b ** 2) / 8)]])
 
     @cached_property
-    def divergence_speed(self):
-        """Divergence speed (velocity) in SI meter per second."""
-        return math.sqrt(
-            2 * self.divergence_pressure / self.ambient_condition.density
+    def aerodynamic_damping_matrix(self) -> np.ndarray:
+        """Unsteady aerodynamic damping matrix."""
+        phi_0 = self.wagner_function(time=0)
+        c = self.typical_section.chord
+        e = self.typical_section.lift_moment_arm / c
+        # Collocation point distance
+        f = (0.75 - self.typical_section.elastic_axis) * c
+        return np.array(
+            [
+                [phi_0, c / 4 + phi_0 * f],
+                [-e * c * phi_0, f * (c / 4 - e * c * phi_0)],
+            ]
         )
 
-    # TODO redo the coding on this monstrosity
-    def plot_frequency_vs_speed(self):
+    @cached_property
+    def aerodynamic_stiffness_matrix(self) -> np.ndarray:
+        """Unsteady aerodynamic stiffness matrix."""
+        phi_0 = self.wagner_function(time=0)
+        phi_dot_0 = self.wagner_function_derivative(time=0)
+        c = self.typical_section.chord
+        e = self.typical_section.lift_moment_arm / c
+        # Collocation point distance
+        f = (0.75 - self.typical_section.elastic_axis) * c
+        return np.array(
+            [
+                [phi_dot_0, self.velocity * phi_0 + f * phi_dot_0],
+                [
+                    -e * c * phi_dot_0,
+                    -e * c * (self.velocity * phi_0 + f * phi_dot_0),
+                ],
+            ]
+        )
 
-        omega_h_list, omega_theta_list = [], []
-        q_list_h = None
-        q_list_theta = []
-        for q_inf in np.linspace(20, 90, 100):
-            k = (
-                self.typical_section.stiffness_matrix
-                - q_inf * self.aerodynamic_stiffness_matrix
-            )
-            eigen_values, _ = scipy.linalg.eig(
-                k, self.typical_section.mass_matrix
-            )
-            omega_h, omega_theta = eigen_values.real
-            if omega_theta < 0 and omega_h > 0:
-                omega_h_list.append(math.sqrt(omega_h))
-                if q_list_h is None:
-                    q_list_h = q_list_theta[:]
-                q_list_h.append(q_inf)
-            if omega_h and omega_theta > 0:
-                omega_h_list.append(math.sqrt(omega_h))
-                omega_theta_list.append(math.sqrt(omega_theta))
-                q_list_theta.append(q_inf)
+    @cached_property
+    def lag_state_matrix(self) -> np.ndarray:
+        """Unsteady aerodynamic lag states (wake effect) matrix.
 
-        plt.plot(q_list_h, omega_h_list)
-        plt.plot(q_list_theta, omega_theta_list)
-        ax = plt.gca()
+        This is a mathematical trick in order to express the
+        wake in the time domain.
+        """
+        b = self.typical_section.half_chord
+        c = self.typical_section.chord
+        e = self.typical_section.lift_moment_arm / c
 
+        # Defining individual elements of the lag state matrix
+        w_11 = -self.psi_1 * self.eps_1 ** 2 / b
+        w_12 = -self.psi_2 * self.eps_2 ** 2 / b
+        w_13 = self.psi_1 * self.eps_1 * (1 - self.eps_1 * (1 - 2 * e))
+        w_14 = self.psi_2 * self.eps_2 * (1 - self.eps_2 * (1 - 2 * e))
+        w_21 = -e * c * w_11
+        w_22 = -e * c * w_12
+        w_23 = -e * c * w_13
+        w_24 = -e * c * w_14
+        return (
+            2
+            * math.pi
+            * self.density
+            * self.velocity ** 3
+            * np.array([[w_11, w_12, w_13, w_14], [w_21, w_22, w_23, w_24]])
+        )
 
-def run_optimizers(
-    aircraft: Wing, print_results: bool = True
-) -> Dict[TSOptimizer, dict]:
-    """Runs each specialized :py:class:`TSOptimizer`."""
-    optimizers = (HeaveTSOptimizer, TorsionTSOptimier, SimultaneousTSOptimizer)
+    @cached_property
+    def initial_lag_state_matrix(self) -> np.ndarray:
+        """Matrix of lag state equations from Leibnitz integration."""
+        e_1 = self.eps_1 * self.velocity / self.typical_section.half_chord
+        e_2 = self.eps_2 * self.velocity / self.typical_section.half_chord
+        return np.array(
+            [
+                [1, 0, -e_1, 0, 0, 0],
+                [1, 0, 0, -e_2, 0, 0],
+                [0, 1, 0, 0, -e_1, 0],
+                [0, 1, 0, 0, 0, -e_2],
+            ]
+        )
 
-    results = {}
-    for optimizer in optimizers:
-        obj = optimizer(aircraft)
-        results[obj] = obj.optimize()
+    @cached_property
+    def aeroelastic_mass_matrix(self) -> np.ndarray:  # noqa: D102
+        return (
+            self.structural_mass_matrix
+            + math.pi
+            * self.density
+            * self.typical_section.half_chord ** 2
+            * self.aerodynamic_mass_matrix
+        )
 
-    if print_results:
-        table = Table(title="Typical Section Optimization Results")
+    @cached_property
+    def aeroelastic_damping_matrix(self) -> np.ndarray:  # noqa: D102
+        return (
+            self.structural_damping_matrix
+            + math.pi
+            * self.density
+            * self.velocity
+            * self.typical_section.chord
+            * self.aerodynamic_damping_matrix
+        )
 
-        table.add_column("Optimizer", justify="left", style="cyan")
-        table.add_column("TS Location m", justify="center")
-        table.add_column("Span Fraction", justify="center")
-        table.add_column("Squared Residual", justify="center", style="red")
+    @cached_property
+    def aeroelastic_stiffness_matrix(self) -> np.ndarray:  # noqa: D102
+        return (
+            self.structural_stiffness_matrix
+            + math.pi
+            * self.density
+            * self.velocity
+            * self.typical_section.chord
+            * self.aerodynamic_stiffness_matrix
+        )
 
-        for opt, result in results.items():
-            table.add_row(
-                opt.__class__.__name__,
-                f"{result['eta_ts'] * aircraft.half_span:.4f}",
-                f"{result['eta_ts']:.4f}",
-                f"{result['fun']:.4e}",
-            )
-        rich.print(table)
-    return results
+    @cached_property
+    def state_matrix(self) -> np.ndarray:
+        """Creates the expanded state-matrix for the unsteady model."""
+        state_matrix = np.zeros((8, 8), dtype=np.float64)
+        state_matrix[:4, :4] = super().state_matrix
+        m_ae_inverse = np.linalg.inv(self.aeroelastic_mass_matrix)
+
+        # Casting the lag state matrix into the upper-right corner
+        state_matrix[0:2, 4:] = -m_ae_inverse @ self.lag_state_matrix
+
+        # Casting initial lag matrix into the lower-right corner
+        state_matrix[4:, 2:] = self.initial_lag_state_matrix
+        return state_matrix
+
+    @cached_property
+    def input_matrix(self) -> np.ndarray:
+        """Extends the input matrix with lag states."""
+        return np.vstack(
+            (super().input_matrix, np.zeros((4, 1), dtype=np.float64))
+        )
+
+    @cached_property
+    def output_matrix(self) -> np.ndarray:
+        """Expanded state-space output matrix, C, with lag-states."""
+        return np.eye(8, dtype=np.float64)
+
+    @cached_property
+    def feedthrough_matrix(self) -> np.ndarray:
+        """Expanded state-space feedthrough or feedfoward matrix, D."""
+        return np.zeros((8, 1), dtype=np.float64)
 
 
 def plot_optimizer_results(results: Dict[TSOptimizer, dict]) -> None:
