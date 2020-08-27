@@ -596,11 +596,31 @@ class TheodorsenQuasiSteadyAeroelasticModel(AeroelasticModel):
             * self.aerodynamic_stiffness_matrix
         )
 
+
+class LiegeQuasiSteadyAeroelasticModel(TheodorsenQuasiSteadyAeroelasticModel):
+    """University of Liege Quasi-Steady Aerodynamic model."""
+
+    @cached_property
+    def aerodynamic_damping_matrix(self):
+        """Similar aero damping matrix to the QS Theordorsen model.
+
         Note:
-            This assumes that the aerodynamic center is located at
-            quarter chord.
+            The addition of the 0.25b^2 term in the pitch moment term is
+            monumental in stabilizing the system.
         """
-        return (self.wing.elastic_axis - 0.25) * self.wing.chord
+        b = self.typical_section.half_chord
+        a = self.typical_section.elastic_axis_offset / b
+        return (
+            np.array(
+                [
+                    [-1, -(1 - a) * b],
+                    [(a + 0.5) * b, -((a - 0.5) * a + 0.25) * b ** 2],
+                ]
+            )
+            * math.pi
+            * 2
+            * b
+        )
 
 
 class SteadyAerodynamicModel(AerodynamicModel):
