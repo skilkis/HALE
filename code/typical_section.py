@@ -1,16 +1,19 @@
 """Contains definitions for aeroelastic analysis with typical sections.
 
 This module is developed for the TU Delft master course AE4ASM506
-Aeroelasticity. Although it is against software best practice, the
-entire analysis is contained within this single module as per the
-request of the lecturer.
+Aeroelasticity. Although it is against software best practice, all
+abstractions and analysis are contained within this single module as per
+the request of the lecturer.
 """
+
+from __future__ import annotations
 
 import math
 from abc import ABCMeta, abstractmethod
+from collections import defaultdict
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import dufte
 import matplotlib
@@ -19,15 +22,20 @@ import rich
 import scipy
 from gammapy.geometry.airfoil import Airfoil, NACA4Airfoil
 from matplotlib import pyplot as plt
+from meshpy.triangle import MeshInfo
 from rich.table import Table
-from scipy import optimize
+from scipy import optimize, signal
 from sectionproperties.analysis.cross_section import CrossSection
+from sectionproperties.post import post
 from sectionproperties.pre.sections import Geometry
+
+FigureHandle = Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
+"""Defines the type of a plot return."""
 
 
 @dataclass(frozen=True)
 class Wing:
-    """Defines straight wing properties used in aeroelastic anlysis.
+    """Defines Daedelus wing parameters used in aeroelastic anlysis.
 
     Note:
         Some of these quantities are expressed on a per-unit length
@@ -37,6 +45,9 @@ class Wing:
     Args:
         half_span: Half of the main wing span in SI meter
         chord: Chord-length of the main wing airfoil in SI meter
+        airfoil: :py:class:`Airfoil` instance describing the
+            outer cross-sectional geometry of the wing.
+        lift_gradient: Lift curve slope in SI per radian
         airfoil_mass: Mass of the main wing per unit span in SI
             kilogram per meter
         airfoil_inertia: Mass moment of inertia per unit
@@ -51,96 +62,141 @@ class Wing:
             Area Moment of Inertia, I, in SI Newton meter squared
         torsional_rigidity: Product of Modulus of Rigidity, G, and the
             Polar Area Moment of Inertia, J, in SI Newton meter squared
-        heave_frequency: Structural natural frequency of the first
-            bending mode in SI radian
-        torsion_frequency; Structural natural frequency of the first
-            torsion mode in SI readian
+        measured_heave_frequency: Structural natural frequency of the
+            first bending mode in SI radian
+        measured_torsion_frequency: Structural natural frequency of the
+            first torsion mode in SI radian
     """
 
     half_span: float = 16
     chord: float = 1
+    lift_gradient: float = 2 * math.pi
+    airfoil: Airfoil = NACA4Airfoil("0015")
     airfoil_mass: float = 0.75
     airfoil_inertia: float = 0.1
     elastic_axis: float = 0.5
     center_of_gravity: float = 0.5
     bending_rigidity: float = 2e4
     torsional_rigidity: float = 1e4
-    # TODO consider removing, lag rigidity is not important here
-    lag_rigidity: float = 4e6
-    heave_frequency: float = 2.243
-    torsion_frequency: float = 31.046
-    lift_gradient: float = 2 * math.pi
+    measured_heave_frequency: float = 2.243
+    measured_torsion_frequency: float = 31.046
+    # TODO add measured divergence and measured flutter velocities
 
 
 @dataclass(frozen=True)
-class AmbientCondition:
+class TypicalSection(Wing):
+    """Specialized representation of :py:class:`Wing` as a section.
 
-    altitude: float = 20e3
-    density: float = 0.0889
+    Args:
+        eta_ts: Normalized location of the typical section along the
+            half-span of the wing.
+    """
 
+    eta_ts: float = 0.75
 
-# TODO document arguments
-class TypicalSection:
-    def __init__(self, wing: Wing, eta_ts: Union[float, np.ndarray] = 0.75):
-        self.wing = wing
-        self.normalized_location = (
-            eta_ts[0] if isinstance(eta_ts, np.ndarray) else eta_ts
-        )
+    def __post_init__(self):
+        """Ensures that :py:attr:`eta_ts` is a float.
+
+        This is useful when a :py:class:`Optimization` inputs a
+        :py:class:`numpy.ndarray` instead of a float.
+        """
+        if isinstance(self.eta_ts, np.ndarray):
+            object.__setattr__(self, "eta_ts", self.eta_ts[0])
 
     @cached_property
     def y_ts(self):
         """Spanwise location of the typical section in SI meter."""
-        return self.normalized_location * self.wing.half_span
+        return self.eta_ts * self.half_span
 
     @cached_property
     def half_chord(self):
         """Half-chord, b, in SI meter."""
-        return self.wing.chord / 2
+        return self.chord / 2
 
     @cached_property
     def x_theta(self):
-        """Norm. distance from the elastic axis to center of gravity."""
-        return self.wing.center_of_gravity - self.wing.elastic_axis
+        """Norm. distance from the elastic axis to center of gravity.
+
+        Note:
+            This is normalized w.r.t to :py:attr:`half_chord` which is
+            why the distance must be multiplied by a factor of 2.
+        """
+        return (self.center_of_gravity - self.elastic_axis) * 2
 
     @cached_property
     def i_theta(self):
         """Mass moment of inertia per unit span at the elastic axis.
 
-        This uses the Stiener Parallel Axis Theorem to compute the
-        mass moment of inertia at the elastic axis using the
-        value of the inertia about the center of gravity. This is
-        equivalent to Iyy of the inertia tensor of the wing as the
-        y-axis is coincident with the elastic axis.
+        Note:
+            This uses the Stiener Parallel Axis Theorem to compute the
+            mass moment of inertia at the elastic axis using the value
+            of the inertia about the center of gravity. This is
+            equivalent to Iyy of the inertia tensor of the wing as the
+            y-axis is coincident with the elastic axis.
         """
-        i_theta_star = self.wing.airfoil_inertia
+        i_theta_star = self.airfoil_inertia
         x_theta = self.x_theta
         b = self.half_chord
-        return i_theta_star + self.wing.airfoil_mass * (x_theta * b) ** 2
+        return i_theta_star + self.airfoil_mass * (x_theta * b) ** 2
 
     @cached_property
-    def mass_matrix(self):
+    def lift_moment_arm(self):
+        """Distance between the aerodynamic center and the elastic axis.
+
+        Note:
+            This distance is equivalent to the distance, ec, and assumes
+            that the aerodynamic center is located at quarter chord.
+        """
+        return (self.elastic_axis - 0.25) * self.chord
+
+    @cached_property
+    def elastic_axis_offset(self):
+        """Norm. distance from the reference axis to the elastic axis.
+
+        Note:
+            This distance is equivalent to the normalized distance, a,
+            times the half-chord from the lecture slides.
+        """
+        return 2 * (self.elastic_axis - 0.5)
+
+
+class StructuralModel:
+    """Defines the linear structural model using the typical section.
+
+    This is left as a separate class since it is useful for the typical
+    section location optimization on its own. It also reduces the
+    clutter of the Aeroelastic models.
+
+    Args:
+        typical_section: A :py:class:`TypicalSection` instance
+    """
+
+    def __init__(
+        self, typical_section: TypicalSection,
+    ):
+        self.typical_section = typical_section
+
+    @cached_property
+    def structural_mass_matrix(self):
         """Structural mass matrix of the typical section."""
+        ts = self.typical_section
         return np.array(
             [
-                [self.wing.airfoil_mass, self.x_theta * self.half_chord],
-                [self.x_theta * self.half_chord, self.i_theta],
+                [
+                    ts.airfoil_mass,
+                    ts.airfoil_mass * ts.x_theta * ts.half_chord,
+                ],
+                [ts.airfoil_mass * ts.x_theta * ts.half_chord, ts.i_theta],
             ]
         )
 
     @cached_property
-    def unit_bending_stiffness(self):
-        """Bending stiffness per unit span in SI Pascal."""
-        EI = self.wing.bending_rigidity / self.y_ts
-        return (3 * EI) / (self.y_ts ** 3)
+    def structural_damping_matrix(self) -> np.ndarray:
+        """Structural damping is zero due to linear structures."""
+        return np.zeros((2, 2), dtype=np.float64)
 
     @cached_property
-    def unit_torsion_stiffness(self):
-        """Torsion striffness per unit span in SI Newton meter."""
-        GJ = self.wing.torsional_rigidity / self.y_ts
-        return GJ / (self.y_ts)
-
-    @cached_property
-    def stiffness_matrix(self):
+    def structural_stiffness_matrix(self):
         """Structural stiffness matrix of the typical section."""
         return np.array(
             [
@@ -148,6 +204,20 @@ class TypicalSection:
                 [0, self.unit_torsion_stiffness],
             ]
         )
+
+    @cached_property
+    def unit_bending_stiffness(self):
+        """Bending stiffness per unit span in SI Pascal."""
+        ts = self.typical_section
+        EI = ts.bending_rigidity / ts.y_ts
+        return (3 * EI) / (ts.y_ts ** 3)
+
+    @cached_property
+    def unit_torsion_stiffness(self):
+        """Torsion striffness per unit span in SI Newton meter."""
+        ts = self.typical_section
+        GJ = ts.torsional_rigidity / ts.y_ts
+        return GJ / (ts.y_ts)
 
     @cached_property
     def mass_spring_eigen_solution(self) -> Tuple[np.ndarray, np.ndarray]:
@@ -167,7 +237,8 @@ class TypicalSection:
               bending mode in SI radian per second
         """
         eigen_values, eigen_vectors = np.linalg.eig(
-            np.linalg.inv(self.mass_matrix) @ self.stiffness_matrix
+            np.linalg.inv(self.structural_mass_matrix)
+            @ self.structural_stiffness_matrix
         )
         # Ensuring eigen values are real-valued
         assert np.all(eigen_values.imag == 0)
@@ -192,7 +263,7 @@ class TypicalSection:
             quantity in order to use the aircraft wing mass per unit
             span.
         """
-        return math.sqrt(self.unit_bending_stiffness / self.wing.airfoil_mass)
+        return math.sqrt(self.unit_bending_stiffness / self.airfoil_mass)
 
     @cached_property
     def uncoupled_torsion_frequency(self) -> float:
