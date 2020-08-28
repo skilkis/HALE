@@ -946,33 +946,45 @@ class WingBox(Geometry, FEMAnalysisMixin):
         self.mesh_size = mesh_size
 
     @cached_property
+    def is_solid(self):
+        """Determines if the wingbox has a solid geometry (no holes)."""
+        return self.x_start + self.t_fs >= self.x_end - self.t_rs
+
+    @cached_property
     def points(self) -> np.ndarray:
         """All points that define the wingbox geometry."""
-        topology = (
-            self.inner_points,
-            self.outer_points,
-        )
-        return np.vstack(topology)
+        if self.is_solid:
+            return self.outer_points
+        else:
+            topology = (
+                self.inner_points,
+                self.outer_points,
+            )
+            return np.vstack(topology)
 
-    # TODO fix holes so that if a solid geometry is defined, a hole is
-    # not created
     @cached_property
-    def holes(self) -> np.ndarray:
+    def holes(self) -> Union[np.ndarray, List]:
         """Midpoint specifying the interior region of the airfoil."""
-        x_mid = np.array([(self.x_end + self.x_start) / 2])
-        bot_midpoint = self.airfoil.lower_surface_at(x_mid)
-        top_midpoint = self.airfoil.upper_surface_at(x_mid)
-        return bot_midpoint + ((top_midpoint - bot_midpoint) / 2)
+        if self.is_solid:
+            return []
+        else:
+            x_mid = np.array([(self.x_end + self.x_start) / 2])
+            bot_midpoint = self.airfoil.lower_surface_at(x_mid)
+            top_midpoint = self.airfoil.upper_surface_at(x_mid)
+            return bot_midpoint + ((top_midpoint - bot_midpoint) / 2)
 
     @cached_property
     def facets(self) -> List[Tuple[int, int]]:
         """Topology of :py:attr:`points` describing connectivity."""
-        n_inner = self.inner_points.shape[0]
-        n_outer = self.outer_points.shape[0]
-        return [
-            *self.get_facets(n_inner),
-            *self.get_facets(n_outer, start_idx=n_inner),
-        ]
+        if self.is_solid:
+            return self.get_facets(self.outer_points.shape[0])
+        else:
+            n_inner = self.inner_points.shape[0]
+            n_outer = self.outer_points.shape[0]
+            return [
+                *self.get_facets(n_inner),
+                *self.get_facets(n_outer, start_idx=n_inner),
+            ]
 
     @cached_property
     def control_points(self) -> np.ndarray:
