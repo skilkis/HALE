@@ -8,10 +8,10 @@ the request of the lecturer.
 
 from __future__ import annotations
 
+import dataclasses
 import math
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass
 from functools import cached_property
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
@@ -33,7 +33,7 @@ FigureHandle = Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
 """Defines the type of a plot return."""
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class Wing:
     """Defines Daedelus wing parameters used in aeroelastic anlysis.
 
@@ -80,10 +80,9 @@ class Wing:
     torsional_rigidity: float = 1e4
     measured_heave_frequency: float = 2.243
     measured_torsion_frequency: float = 31.046
-    # TODO add measured divergence and measured flutter velocities
 
 
-@dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True)
 class TypicalSection(Wing):
     """Specialized representation of :py:class:`Wing` as a section.
 
@@ -810,6 +809,11 @@ class UnsteadyAeroelasticModel(AeroelasticModel):
         return np.zeros((8, 1), dtype=np.float64)
 
 
+class Point(NamedTuple):
+    x: float
+    y: float
+
+
 class FEMAnalysisMixin:
     """Defines derived properties from a FEM analysis.
 
@@ -876,17 +880,17 @@ class FEMAnalysisMixin:
         return self.section.get_j()
 
     @property
-    def centroid(self) -> Tuple[float, float]:
+    def centroid(self) -> Point:
         """Location of the area centroid and the center of gravity."""
         self.ensure_geometry_has_run()
         self.ensure_warping_has_run()
-        return self.section.get_c()
+        return Point(*self.section.get_c())
 
     @property
-    def shear_center(self) -> Tuple[float, float]:
+    def shear_center(self) -> Point:
         """Location of the shear center as computed by FEM."""
         self.ensure_warping_has_run()
-        return self.section.get_sc()
+        return Point(*self.section.get_sc())
 
     _has_geometry_run = False
     _has_warping_run = False
@@ -930,7 +934,7 @@ class WingBox(Geometry, FEMAnalysisMixin):
         t_fs: float = 0.01,
         t_rs: float = 0.01,
         t_skin: float = 0.01,
-        airfoil: Airfoil = NACA4Airfoil("0012"),
+        airfoil: Airfoil = TypicalSection.airfoil,
         n_points: int = 20,
         shift: Tuple[float, float] = (0, 0),
         mesh_size: float = math.inf,
@@ -1230,6 +1234,7 @@ class TSOptimization(Optimization):
 
     eta_ts = DesignVariable(initial=0.75, lower=1e-6, upper=1)
 
+
     def optimize(self) -> dict:
         """Optimizes TS location using :py:meth:`objective_function`."""
         result = super().optimize()
@@ -1321,8 +1326,9 @@ class WingBoxOptimization(Optimization):
     x_end = DesignVariable(initial=0.7, lower=0.55, upper=0.95)
     t_fs = DesignVariable(initial=5e-3, lower=1e-3, upper=0.05)
     t_rs = DesignVariable(initial=0.04, lower=1e-3, upper=0.05)
-    t_skin = DesignVariable(initial=0.01, lower=1e-3, upper=0.01)
+    t_skin = DesignVariable(initial=0.01, lower=1e-3, upper=0.05)
     normalize = True
+    verbose = True
     default_options = {"gtol": 1e-12, "ftol": 1e-12, "disp": 100}
 
     def __init__(self, typical_section: TypicalSection):
@@ -1350,17 +1356,19 @@ class GeometricWingBoxOptimization(WingBoxOptimization):
         """Returns the RSS error of the shear center and CG."""
         wbox = self.get_wingbox(x)
         ts = self.typical_section
-        shear_error = (wbox.shear_center[0] - ts.elastic_axis) ** 2
-        centroid_error = (wbox.centroid[0] - ts.center_of_gravity) ** 2
+        shear_error = (wbox.shear_center.x - ts.elastic_axis) ** 2
+        centroid_error = (wbox.centroid.y - ts.center_of_gravity) ** 2
         # i_theta = (0.75 / wbox.area) * (
         #     wbox.bending_inertia + wbox.chordwise_inertia
         # )
-        print(shear_error, centroid_error)
+        # print(shear_error, centroid_error)
         return shear_error + centroid_error
 
 
 class AeroelasticWingBoxOptimization(WingBoxOptimization):
     """Optimizes the wingbox to match divergence and flutter speed."""
+
+    aeroelastic_model: AeroelasticModel = UnsteadyAeroelasticModel
 
     def __init__(
         self, typical_section: TypicalSection, initial_wing_box: WingBox,
@@ -1373,18 +1381,70 @@ class AeroelasticWingBoxOptimization(WingBoxOptimization):
             initial = getattr(initial_wing_box, k)
             setattr(self, k, DesignVariable(initial, v.lower, v.upper))
 
-    @property
-    def target_velocity(self):
-        return 37.15
+    @cached_property
+    def material_density(self) -> float:
+        """Density of the material in SI kilogram per meter cubed.
 
-    def objective_function(self):
-        pass
+        Note:
+            That the typical section airfoil mass is expressed
+            per unit span and has units of SI kilogram per meter.
+        """
+        return self.typical_section.airfoil_mass / self.initial_wing_box.area
 
-    def run_aeroelastic_model(self, wingbox):
-        pass
+    @cached_property
+    def modulus_of_elasticity(self) -> float:
+        """Modulus of elasticity, E, in Newton per meter squared."""
+        return (
+            self.typical_section.bending_rigidity
+            / self.initial_wing_box.bending_inertia
+        )
+
+    @cached_property
+    def modulus_of_rigidity(self) -> float:
+        """Modulus of rigidity, G, in Newton per meter squared."""
+        return (
+            self.typical_section.bending_rigidity
+            / self.initial_wing_box.polar_inertia
+        )
+
+    @cached_property
+    def inertia_offset(self) -> float:
+        """Offset value to match wingbox and typical section inertia."""
+        return (
+            self.typical_section.airfoil_inertia
+            - self.initial_wing_box.polar_inertia * self.material_density
+        )
+
+    def get_typical_section(self, wingbox: WingBox):
+        """Returns a :py:class:`TypicalSection` using ``wingbox``."""
+        c = self.typical_section.chord
+        ts_kwargs = dataclasses.asdict(self.typical_section)
+        updated_kwargs = dict(
+            airfoil_mass=self.material_density * wingbox.area,
+            airfoil_inertia=wingbox.polar_inertia * self.material_density
+            + self.inertia_offset,
+            elastic_axis=wingbox.shear_center.x / c,
+            center_of_gravity=wingbox.centroid.x / c,
+            bending_rigidity=wingbox.bending_inertia
+            * self.modulus_of_elasticity,
+            torsional_rigidity=wingbox.polar_inertia
+            * self.modulus_of_rigidity,
+        )
+        ts_kwargs.update(updated_kwargs)
+        return TypicalSection(**ts_kwargs)
+
+    def objective_function(self, x):
+        wbox = self.get_wingbox(x)
+        ts = self.get_typical_section(wbox)
+        aero_model = self.aeroelastic_model(typical_section=ts)
+        div_speed = aero_model.divergence_speed
+        flutter_speed = aero_model.flutter_speed
+        error = (div_speed - 37.15) ** 2 + (flutter_speed - 37.15) ** 2
+        print(error)
+        return error
 
 
-def run_optimizations(
+def run_ts_optimizations(
     print_results: bool = True,
 ) -> Dict[TSOptimization, dict]:
     """Runs each specialized :py:class:`TSOptimizer`."""
@@ -1419,7 +1479,9 @@ def run_optimizations(
     return results
 
 
-def plot_optimization_results(results: Dict[TSOptimization, dict]) -> None:
+def plot_ts_optimization_results(
+    results: Dict[TSOptimization, dict]
+) -> FigureHandle:
     """Plots error of each specialized :py:class:`TSOptimizer`."""
     plt.style.use(dufte.style)
     fig, ax = plt.subplots()
@@ -1436,16 +1498,47 @@ def plot_optimization_results(results: Dict[TSOptimization, dict]) -> None:
     return fig, ax
 
 
+def run_geometric_wbox_optimization():
+    pass
+
+
+def plot_geometric_wbox_optimization(
+    optimized_wingbox: WingBox,
+) -> FigureHandle:
+    fig, (x_ax, t_ax) = plt.subplots(nrows=2, ncols=1)
+    for label, data in optimized_wingbox.history.items():
+        if "x" in label:
+            ax = x_ax
+            ylabel = "Normalized Spar Positions"
+        else:
+            ax = t_ax
+            ylabel = "Normalized Thicknesses"
+        ax.plot(
+            data,
+            label=label,
+            marker="o",
+            markerfacecolor="white",
+            markeredgecolor="black",
+            markeredgewidth="1",
+        )
+        ax.set_ylabel(ylabel)
+        ax.legend(loc="best")
+    plt.xlabel("Design Iteration [-]")
+    fig.align_ylabels((x_ax, t_ax))
+    return fig, (x_ax, t_ax)
+
+
 if __name__ == "__main__":
     wing = Wing()
-    opt_results = run_optimizations(wing)
-    plot_optimization_results(opt_results)
+    opt_results = run_ts_optimizations()
+    plot_ts_optimization_results(opt_results)
 
     torsion_ts = opt_results[TorsionTSOptimization]["ts_opt"]
     aero_model = UnsteadyAeroelasticModel(torsion_ts, velocity=30)
     print("Divergence Velocity:\n", aero_model.divergence_speed)
     print("Flutter Velocity:\n", aero_model.flutter_speed)
     _, _, xout = aero_model.simulate(5, np.linspace(0, 10, 1000))
+    # wbox.plot_geometry()
     # airfoil = NACA4Airfoil("naca0012")
     # w_opt = GeometricWingBoxOptimization(wing, torsion_ts)
     # result = w_opt.optimize()
@@ -1455,19 +1548,29 @@ if __name__ == "__main__":
     # )
 
     # Shear center and centroid at 0.5
-    # wbox = WingBox(
-    #     **dict(
-    #         [
-    #             ("x_start", 0.234542706789857),
-    #             ("x_end", 0.6839615721216693),
-    #             ("t_fs", 0.005218501897141772),
-    #             ("t_rs", 0.03969576206057929),
-    #             ("t_skin", 0.00967284680430912),
-    #         ]
-    #     )
-    # )
-    # wbox.plot_centroids()
+    wbox = WingBox(
+        x_start=0.234542706789857,
+        x_end=0.6839615721216693,
+        t_fs=0.005218501897141772,
+        t_rs=0.03969576206057929,
+        t_skin=0.00967284680430912,
+    )
+    wbox.plot_centroids()
+    opt = AeroelasticWingBoxOptimization(
+        typical_section=torsion_ts, initial_wing_box=wbox
+    )
+    # opt.optimize()
 
     # Maximum I_theta optimization
     # wbox = WingBox(**dict([('x_start', 0.05), ('x_end', 0.95), ('t_fs', 0.009456086207970144), ('t_rs', 0.033624624987465566), ('t_skin', 0.001)]))
     # wbox.plot_centroids()
+
+    # Optimized Aeroelastic Wingbox:
+    wbox_opt = WingBox(
+        x_start=0.25940423,
+        x_end=0.61488145,
+        t_fs=0.00302934,
+        t_rs=0.03731402,
+        t_skin=0.01064013,
+    )
+    # opt.objective_function([1.208, 0.92516, 1.1, 0.5, 0.9])
