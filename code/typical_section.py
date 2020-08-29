@@ -1470,7 +1470,7 @@ class AeroelasticWingBoxOptimization(WingBoxOptimization):
     def modulus_of_rigidity(self) -> float:
         """Modulus of rigidity, G, in Newton per meter squared."""
         return (
-            self.typical_section.bending_rigidity
+            self.typical_section.torsional_rigidity
             / self.initial_wing_box.polar_inertia
         )
 
