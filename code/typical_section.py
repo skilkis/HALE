@@ -1418,9 +1418,18 @@ class GeometricWingBoxOptimization(WingBoxOptimization):
 
 
 class AeroelasticWingBoxOptimization(WingBoxOptimization):
-    """Optimizes the wingbox to match divergence and flutter speed."""
+    """Optimizes the wingbox to match divergence and flutter speed.
+
+    Attributes:
+        aeroelastic_model: The :py:class:`AeroelasticModel` used to
+            calculate the divergence and flutter speed during the
+            optimization
+        target_speed: The target speed (velocity) to match both the
+            divergence and flutter speed to in SI meter per second
+    """
 
     aeroelastic_model: AeroelasticModel = UnsteadyAeroelasticModel
+    target_speed: float = 37.15
 
     def __init__(
         self, typical_section: TypicalSection, initial_wing_box: WingBox,
@@ -1486,13 +1495,13 @@ class AeroelasticWingBoxOptimization(WingBoxOptimization):
         return TypicalSection(**ts_kwargs)
 
     def objective_function(self, x):
+        """Returns the RSS error of the divergence and flutter speed."""
         wbox = self.get_wingbox(x)
         ts = self.get_typical_section(wbox)
         aero_model = self.aeroelastic_model(typical_section=ts)
-        div_speed = aero_model.divergence_speed
-        flutter_speed = aero_model.flutter_speed
-        error = (div_speed - 37.15) ** 2 + (flutter_speed - 37.15) ** 2
-        print(error)
+        d_speed_rss = (aero_model.divergence_speed - self.target_speed) ** 2
+        f_speed_rss = (aero_model.flutter_speed - self.target_speed) ** 2
+        error = d_speed_rss + f_speed_rss
         return error
 
 
