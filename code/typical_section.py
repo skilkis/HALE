@@ -1659,11 +1659,11 @@ if __name__ == "__main__":
         savefig(fig, "aeroelastic_wbox_opt_history.pdf")
     else:
         aeroelastic_wbox = WingBox(
-            x_start=0.2524915933516704,
+            x_start=0.2172114623883768,
             x_end=0.55,
-            t_fs=0.004411021406947681,
-            t_rs=0.041166130801165046,
-            t_skin=0.01251893006905844,
+            t_fs=0.008458459838219579,
+            t_rs=0.041504879385093146,
+            t_skin=0.01688176404495601,
         )
 
     fig, _ = aeroelastic_wbox.plot_centroids()
