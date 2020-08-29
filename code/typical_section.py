@@ -1599,7 +1599,7 @@ def savefig(fig: matplotlib.figure.Figure, filename: str, **savefig_kwargs):
 
 if __name__ == "__main__":
     # Main Assignment Script (Runs Deliverables of Task 3-16)
-    RUN_OPTIMIZATIONS = True
+    RUN_OPTIMIZATIONS = False
 
     wing = Wing()
     opt_results = run_ts_optimizations()
@@ -1623,41 +1623,43 @@ if __name__ == "__main__":
         geometric_result = geometric_opt.optimize(display=True)
         print(geometric_result)
         geometric_wbox = geometric_result["wingbox"]
+        geometric_opt.save_history()
 
         # Creating plots of the geometrically optimized wingbox
         fig, _ = plot_wbox_optimization_history(optimizer=geometric_opt)
         savefig(fig, "geometric_wbox_opt_history.pdf")
     else:
         geometric_wbox = WingBox(
-            x_start=0.2791578700820214,
-            x_end=0.6924914990140698,
-            t_fs=0.0039885969772170205,
-            t_rs=0.012688221789278711,
-            t_skin=0.006370895371345295,
+            x_start=0.23454548804408806,
+            x_end=0.6848234941195622,
+            t_fs=0.005214486372877884,
+            t_rs=0.03970339376830019,
+            t_skin=0.009682362298690142,
         )
     fig, _ = geometric_wbox.plot_centroids()
     savefig(fig, "geometric_wbox_opt_centroids.pdf")
 
     # Task 16 ---------------------------------------------------------- # noqa
     print("\n Task 16: Structural Optimization to Match Speeds")
+    aeroelastic_opt = AeroelasticWingBoxOptimization(
+        typical_section=torsion_ts, initial_wing_box=geometric_wbox
+    )
     if RUN_OPTIMIZATIONS:
-        aeroelastic_opt = AeroelasticWingBoxOptimization(
-            typical_section=torsion_ts, initial_wing_box=geometric_wbox
-        )
         aeroelastic_result = aeroelastic_opt.optimize(display=True)
         print(aeroelastic_result)
         aeroelastic_wbox = aeroelastic_result["wingbox"]
+        aeroelastic_opt.save_history()
 
         # Creating plots of the aeroelastically optimized wingbox
         fig, _ = plot_wbox_optimization_history(optimizer=aeroelastic_opt)
         savefig(fig, "aeroelastic_wbox_opt_history.pdf")
     else:
         aeroelastic_wbox = WingBox(
-            x_start=0.2941317228350085,
-            x_end=0.5522862784570101,
-            t_fs=0.0033959627024889518,
-            t_rs=0.014458462077034615,
-            t_skin=0.009216891977525824,
+            x_start=0.2524915933516704,
+            x_end=0.55,
+            t_fs=0.004411021406947681,
+            t_rs=0.041166130801165046,
+            t_skin=0.01251893006905844,
         )
 
     fig, _ = aeroelastic_wbox.plot_centroids()
