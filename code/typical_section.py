@@ -1364,11 +1364,7 @@ class GeometricWingBoxOptimization(WingBoxOptimization):
         wbox = self.get_wingbox(x)
         ts = self.typical_section
         shear_error = (wbox.shear_center.x - ts.elastic_axis) ** 2
-        centroid_error = (wbox.centroid.y - ts.center_of_gravity) ** 2
-        # i_theta = (0.75 / wbox.area) * (
-        #     wbox.bending_inertia + wbox.chordwise_inertia
-        # )
-        # print(shear_error, centroid_error)
+        centroid_error = (wbox.centroid.x - ts.center_of_gravity) ** 2
         return shear_error + centroid_error
 
 
