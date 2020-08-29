@@ -1500,11 +1500,15 @@ class AeroelasticWingBoxOptimization(WingBoxOptimization):
         ts_kwargs.update(updated_kwargs)
         return TypicalSection(**ts_kwargs)
 
-    def objective_function(self, x):
-        """Returns the RSS error of the divergence and flutter speed."""
+    def get_aero_model(self, x: np.ndarray) -> AeroelasticModel:
+        """Gets an :py:class:`AeroelasticModel` using ``x``."""
         wbox = self.get_wingbox(x)
         ts = self.get_typical_section(wbox)
-        aero_model = self.aeroelastic_model(typical_section=ts)
+        return self.aeroelastic_model(typical_section=ts)
+
+    def objective_function(self, x: np.ndarray) -> float:
+        """Returns the RSS error of the divergence and flutter speed."""
+        aero_model = self.get_aero_model(x)
         d_speed_rss = (aero_model.divergence_speed - self.target_speed) ** 2
         f_speed_rss = (aero_model.flutter_speed - self.target_speed) ** 2
         error = d_speed_rss + f_speed_rss
