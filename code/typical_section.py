@@ -1141,6 +1141,14 @@ class Optimization(metaclass=OptimizationMeta):
         default_options: Default options passed to the optimizer.
         history: All design vectors used to evaluate
             :py:meth:`objective_function`
+        design_vector: Mapping between the attribute names of the
+            :py:class:`DesignVariable` instances.
+        normalize: Toggles if the :py:attr:`design_vector` should be
+            normalized internally during the optimization. This means
+            that each design variable is divided by its initial value to
+            allow the normalizer to make proportional changes to each
+            design variable. It is especially when the design variables
+            have different orders of magnitude.
     """
 
     default_options = {}
