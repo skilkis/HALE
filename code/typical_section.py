@@ -1564,33 +1564,31 @@ def plot_ts_optimization_results(
     return fig, ax
 
 
-def run_geometric_wbox_optimization():
-    pass
-
-
-def plot_geometric_wbox_optimization(
-    optimized_wingbox: WingBox,
+def plot_wbox_optimization_history(
+    optimizer: WingBoxOptimization,
 ) -> FigureHandle:
-    fig, (x_ax, t_ax) = plt.subplots(nrows=2, ncols=1)
-    for label, data in optimized_wingbox.history.items():
-        if "x" in label:
-            ax = x_ax
-            ylabel = "Normalized Spar Positions"
+    """Plots the convergence history of the wingbox optimization."""
+    fig, (x_ax, t_ax, o_ax) = plt.subplots(nrows=3, ncols=1, sharex=True)
+    for key, data in optimizer.history.items():
+        if key != "objective_value":
+            if "x" in key:
+                ax = x_ax
+                ylabel = "$x$"
+            else:
+                ax = t_ax
+                ylabel = "$t$"
+            label = "${0}_{{{1}}}$".format(*key.split("_"))
         else:
-            ax = t_ax
-            ylabel = "Normalized Thicknesses"
-        ax.plot(
-            data,
-            label=label,
-            marker="o",
-            markerfacecolor="white",
-            markeredgecolor="black",
-            markeredgewidth="1",
-        )
+            ax = o_ax
+            ylabel = r"$f\left(\mathbf{x}\right)$"
+            label = None
+        ax.plot(data, label=label)
         ax.set_ylabel(ylabel)
+
+    for ax in (x_ax, t_ax):
         ax.legend(loc="best")
-    plt.xlabel("Design Iteration [-]")
-    fig.align_ylabels((x_ax, t_ax))
+    plt.xlabel("Design Evaluation")
+    fig.align_ylabels((x_ax, t_ax, o_ax))
     return fig, (x_ax, t_ax)
 
 
