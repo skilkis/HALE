@@ -1385,11 +1385,11 @@ class SimultaneousTSOptimization(HeaveTSOptimization, TorsionTSOptimization):
 class WingBoxOptimization(Optimization):
     """Defines the design variables of a wingbox optimization."""
 
-    x_start = DesignVariable(initial=0.15, lower=0.1, upper=0.45)
-    x_end = DesignVariable(initial=0.8, lower=0.55, upper=0.85)
-    t_fs = DesignVariable(initial=1e-2, lower=1e-3, upper=0.05)
-    t_rs = DesignVariable(initial=1e-2, lower=1e-3, upper=0.05)
-    t_skin = DesignVariable(initial=5e-3, lower=1e-3, upper=0.05)
+    x_start = DesignVariable(initial=0.25, lower=0.1, upper=0.45)
+    x_end = DesignVariable(initial=0.7, lower=0.55, upper=0.95)
+    t_fs = DesignVariable(initial=5e-3, lower=1e-3, upper=0.05)
+    t_rs = DesignVariable(initial=0.04, lower=1e-3, upper=0.05)
+    t_skin = DesignVariable(initial=0.01, lower=1e-3, upper=0.05)
     normalize = True
     default_options = {"gtol": 1e-12, "ftol": 1e-12, "disp": 100}
 
@@ -1599,7 +1599,7 @@ def savefig(fig: matplotlib.figure.Figure, filename: str, **savefig_kwargs):
 
 if __name__ == "__main__":
     # Main Assignment Script (Runs Deliverables of Task 3-16)
-    RUN_OPTIMIZATIONS = False
+    RUN_OPTIMIZATIONS = True
 
     wing = Wing()
     opt_results = run_ts_optimizations()
@@ -1612,6 +1612,9 @@ if __name__ == "__main__":
     aero_model.simulate(5, np.linspace(0, 10, 1000))
 
     # Task 14 ---------------------------------------------------------- # noqa
+    # TODO Add sensitivty analysis barchart on structural parameters to
+    # flutter
+    # TODO add sensitivty of wingbox parameters to structural parameters
     print("\n Task 14: Understanding Structural Modifications")
     if RUN_OPTIMIZATIONS:
         geometric_opt = GeometricWingBoxOptimization(
