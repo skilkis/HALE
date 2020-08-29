@@ -15,6 +15,7 @@ from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from datetime import datetime
 from functools import cached_property, partial
+from pathlib import Path
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import matplotlib
@@ -33,6 +34,9 @@ from sectionproperties.pre.sections import Geometry
 FigureHandle = Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
 """Defines the type of a plot return."""
 
+ROOT_DIR = Path(__file__).parent.parent
+FIGURE_DIR = ROOT_DIR / "docs" / "figures"
+DATA_DIR = ROOT_DIR / "docs" / "data"
 
 plt.style.use("ggplot")
 
@@ -1229,7 +1233,7 @@ class Optimization(metaclass=OptimizationMeta):
             options=self.default_options,
         )
 
-        # Running objective and logging result for the final design vector
+        # Ensuring that the final design vector is run and logged
         wrapped_objective(x=result["x"])
 
         self.__end__ = datetime.now()
@@ -1265,16 +1269,18 @@ class Optimization(metaclass=OptimizationMeta):
         """Turns ``x`` into physical quantities if required."""
         return x * self.x0 if self.normalize else x
 
-    def save_history(self, filename: Optional[str] = None) -> None:
+    def save_history(self, filepath: Optional[str] = None) -> None:
         """Saves the :py:attr:`history` dictionary to JSON file.
 
         Args:
-            filename: Sets the filename of output file
+            filepath: Sets the output filepath including filename
         """
-        if filename is None:
+        if filepath is None:
             formatted_date = "_".join(self.__end__.isoformat().split(":")[0:2])
-            filename = f"{self.__class__.__name__}_{formatted_date}.json"
-        with open(filename, "w") as fp:
+            filepath = DATA_DIR / (
+                f"{self.__class__.__name__}_{formatted_date}.json"
+            )
+        with open(filepath, "w") as fp:
             json.dump(self.history, fp, indent=4)
 
 
@@ -1587,6 +1593,11 @@ def plot_geometric_wbox_optimization(
     plt.xlabel("Design Iteration [-]")
     fig.align_ylabels((x_ax, t_ax))
     return fig, (x_ax, t_ax)
+
+
+def savefig(fig: matplotlib.figure.Figure, filename: str, **savefig_kwargs):
+    """Saves a provided ``fig`` using ``filename``."""
+    fig.savefig(FIGURE_DIR / filename, bbox_inches="tight", **savefig_kwargs)
 
 
 if __name__ == "__main__":
