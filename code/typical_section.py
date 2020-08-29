@@ -1385,13 +1385,12 @@ class SimultaneousTSOptimization(HeaveTSOptimization, TorsionTSOptimization):
 class WingBoxOptimization(Optimization):
     """Defines the design variables of a wingbox optimization."""
 
-    x_start = DesignVariable(initial=0.25, lower=0.1, upper=0.45)
-    x_end = DesignVariable(initial=0.7, lower=0.55, upper=0.95)
-    t_fs = DesignVariable(initial=5e-3, lower=1e-3, upper=0.05)
-    t_rs = DesignVariable(initial=0.04, lower=1e-3, upper=0.05)
-    t_skin = DesignVariable(initial=0.01, lower=1e-3, upper=0.05)
+    x_start = DesignVariable(initial=0.15, lower=0.1, upper=0.45)
+    x_end = DesignVariable(initial=0.8, lower=0.55, upper=0.85)
+    t_fs = DesignVariable(initial=1e-2, lower=1e-3, upper=0.05)
+    t_rs = DesignVariable(initial=1e-2, lower=1e-3, upper=0.05)
+    t_skin = DesignVariable(initial=5e-3, lower=1e-3, upper=0.05)
     normalize = True
-    verbose = True
     default_options = {"gtol": 1e-12, "ftol": 1e-12, "disp": 100}
 
     def __init__(self, typical_section: TypicalSection):
@@ -1408,7 +1407,7 @@ class WingBoxOptimization(Optimization):
         x = self.unnormalize(x)
         kwargs = dict(zip(self.variable_names, x))
         return WingBox(
-            **kwargs, airfoil=self.typical_section.airfoil, n_points=5
+            **kwargs, airfoil=self.typical_section.airfoil, n_points=10
         )
 
 
