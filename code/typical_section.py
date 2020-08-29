@@ -1598,6 +1598,9 @@ def savefig(fig: matplotlib.figure.Figure, filename: str, **savefig_kwargs):
 
 
 if __name__ == "__main__":
+    # Main Assignment Script (Runs Deliverables of Task 3-16)
+    RUN_OPTIMIZATIONS = False
+
     wing = Wing()
     opt_results = run_ts_optimizations()
     plot_ts_optimization_results(opt_results)
@@ -1606,40 +1609,53 @@ if __name__ == "__main__":
     aero_model = UnsteadyAeroelasticModel(torsion_ts, velocity=30)
     print("Divergence Velocity:\n", aero_model.divergence_speed)
     print("Flutter Velocity:\n", aero_model.flutter_speed)
-    _, _, xout = aero_model.simulate(5, np.linspace(0, 10, 1000))
-    # wbox.plot_geometry()
-    # airfoil = NACA4Airfoil("naca0012")
-    # w_opt = GeometricWingBoxOptimization(wing, torsion_ts)
-    # result = w_opt.optimize()
-    # result["wingbox"].plot_centroids()
-    # w_aero_opt = AeroelasticWingBoxOptimization(
-    #     wing, torsion_ts, result["wingbox"]
-    # )
+    aero_model.simulate(5, np.linspace(0, 10, 1000))
 
-    # Shear center and centroid at 0.5
-    wbox = WingBox(
-        x_start=0.234542706789857,
-        x_end=0.6839615721216693,
-        t_fs=0.005218501897141772,
-        t_rs=0.03969576206057929,
-        t_skin=0.00967284680430912,
-    )
-    wbox.plot_centroids()
-    opt = AeroelasticWingBoxOptimization(
-        typical_section=torsion_ts, initial_wing_box=wbox
-    )
-    # opt.optimize()
+    # Task 14 ---------------------------------------------------------- # noqa
+    print("\n Task 14: Understanding Structural Modifications")
+    if RUN_OPTIMIZATIONS:
+        geometric_opt = GeometricWingBoxOptimization(
+            typical_section=torsion_ts
+        )
+        geometric_result = geometric_opt.optimize(display=True)
+        print(geometric_result)
+        geometric_wbox = geometric_result["wingbox"]
 
-    # Maximum I_theta optimization
-    # wbox = WingBox(**dict([('x_start', 0.05), ('x_end', 0.95), ('t_fs', 0.009456086207970144), ('t_rs', 0.033624624987465566), ('t_skin', 0.001)]))
-    # wbox.plot_centroids()
+        # Creating plots of the geometrically optimized wingbox
+        fig, _ = plot_wbox_optimization_history(optimizer=geometric_opt)
+        savefig(fig, "geometric_wbox_opt_history.pdf")
+    else:
+        geometric_wbox = WingBox(
+            x_start=0.2791578700820214,
+            x_end=0.6924914990140698,
+            t_fs=0.0039885969772170205,
+            t_rs=0.012688221789278711,
+            t_skin=0.006370895371345295,
+        )
+    fig, _ = geometric_wbox.plot_centroids()
+    savefig(fig, "geometric_wbox_opt_centroids.pdf")
 
-    # Optimized Aeroelastic Wingbox:
-    wbox_opt = WingBox(
-        x_start=0.25940423,
-        x_end=0.61488145,
-        t_fs=0.00302934,
-        t_rs=0.03731402,
-        t_skin=0.01064013,
-    )
-    # opt.objective_function([1.208, 0.92516, 1.1, 0.5, 0.9])
+    # Task 16 ---------------------------------------------------------- # noqa
+    print("\n Task 16: Structural Optimization to Match Speeds")
+    if RUN_OPTIMIZATIONS:
+        aeroelastic_opt = AeroelasticWingBoxOptimization(
+            typical_section=torsion_ts, initial_wing_box=geometric_wbox
+        )
+        aeroelastic_result = aeroelastic_opt.optimize(display=True)
+        print(aeroelastic_result)
+        aeroelastic_wbox = aeroelastic_result["wingbox"]
+
+        # Creating plots of the aeroelastically optimized wingbox
+        fig, _ = plot_wbox_optimization_history(optimizer=aeroelastic_opt)
+        savefig(fig, "aeroelastic_wbox_opt_history.pdf")
+    else:
+        aeroelastic_wbox = WingBox(
+            x_start=0.2941317228350085,
+            x_end=0.5522862784570101,
+            t_fs=0.0033959627024889518,
+            t_rs=0.014458462077034615,
+            t_skin=0.009216891977525824,
+        )
+
+    fig, _ = aeroelastic_wbox.plot_centroids()
+    savefig(fig, "aeroelastic_wbox_opt_centroids.pdf")
