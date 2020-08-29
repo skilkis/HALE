@@ -9,10 +9,12 @@ the request of the lecturer.
 from __future__ import annotations
 
 import dataclasses
+import json
 import math
 from abc import ABCMeta, abstractmethod
 from collections import defaultdict
-from functools import cached_property
+from datetime import datetime
+from functools import cached_property, partial
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
 import dufte
@@ -1145,7 +1147,6 @@ class Optimization(metaclass=OptimizationMeta):
     history: Dict[str, List[float]] = None
     design_vector: Dict[str, DesignVariable] = None
     normalize: bool = False
-    verbose: bool = False
 
     def __post_init__(self):
         """Traverses the MRO in reverse to get all design variables.
@@ -1160,6 +1161,7 @@ class Optimization(metaclass=OptimizationMeta):
                 self.design_vector.update(self.get_design_variables(cls))
         self.design_vector.update(self.get_design_variables(self))
         self.history = {name: [] for name in self.variable_names}
+        self.history["objective_value"] = []
 
     @property
     def bounds(self) -> List[Tuple[float, float]]:
@@ -1186,6 +1188,11 @@ class Optimization(metaclass=OptimizationMeta):
         """Names of the variables ordered as per the design vector."""
         return tuple(self.design_vector.keys())
 
+    @property
+    def runtime(self) -> datetime.timedelta:
+        """Returns the runtime of the latest optimization."""
+        return self.__end__ - self.__start__
+
     @staticmethod
     def get_design_variables(instance) -> Dict[str, DesignVariable]:
         """Gets all :py:class:`DesignVariable` in ``instance``."""
@@ -1195,25 +1202,47 @@ class Optimization(metaclass=OptimizationMeta):
             if isinstance(obj, DesignVariable)
         }
 
-    def optimize(self, **optimization_options) -> dict:
+    __start__: datetime = datetime.now()
+    __end__: datetime = __start__
+
+    def optimize(
+        self, *, display: bool = True, **optimization_options
+    ) -> dict:
         """Runs the optimization and returns the optimization result."""
         self.default_options.update(**optimization_options)
+        wrapped_objective = partial(self.objective_wrapper, display=display)
+
+        self.__start__ = datetime.now()
         result = optimize.minimize(
-            self.objective_function,
+            fun=wrapped_objective,
             x0=self.x0 / self.x0 if self.normalize else self.x0,
             bounds=self.normalized_bounds if self.normalize else self.bounds,
             options=self.default_options,
-            callback=self.log,
         )
+
+        # Running objective and logging result for the final design vector
+        wrapped_objective(x=result["x"])
+
+        self.__end__ = datetime.now()
+
         return result
 
-    def log(self, x) -> None:
-        """Logs the current design vector ``x``."""
+    def objective_wrapper(self, x: np.ndarray, display: bool) -> float:
+        """Runs :py:meth:`objective_function` and records its value."""
+        objective_value = self.objective_function(x)
+
+        # Logging history of design variable
         x = self.unnormalize(x)
         for name, variable in zip(self.variable_names, x):
             self.history[name].append(variable)
-        if self.verbose:
+
+        # Logging history of objective
+        self.history["objective_value"].append(objective_value)
+
+        if display:
             print(*zip(self.variable_names, x))
+
+        return objective_value
 
     @abstractmethod
     def objective_function(self, x: np.ndarray) -> float:
@@ -1223,9 +1252,21 @@ class Optimization(metaclass=OptimizationMeta):
             x: Design vector of the optimization problem
         """
 
-    def unnormalize(self, x) -> float:
+    def unnormalize(self, x: np.ndarray) -> np.ndarray:
         """Turns ``x`` into physical quantities if required."""
         return x * self.x0 if self.normalize else x
+
+    def save_history(self, filename: Optional[str] = None) -> None:
+        """Saves the :py:attr:`history` dictionary to JSON file.
+
+        Args:
+            filename: Sets the filename of output file
+        """
+        if filename is None:
+            formatted_date = "_".join(self.__end__.isoformat().split(":")[0:2])
+            filename = f"{self.__class__.__name__}_{formatted_date}.json"
+        with open(filename, "w") as fp:
+            json.dump(self.history, fp, indent=4)
 
 
 class TSOptimization(Optimization):
@@ -1233,9 +1274,9 @@ class TSOptimization(Optimization):
 
     eta_ts = DesignVariable(initial=0.75, lower=1e-6, upper=1)
 
-    def optimize(self) -> dict:
+    def optimize(self, display: bool = False) -> dict:
         """Optimizes TS location using :py:meth:`objective_function`."""
-        result = super().optimize()
+        result = super().optimize(display=display)
         # Setting :py:attr:`eta_ts_final` to final optimized value.
         # The optimization result "x" is removed and renamed to "eta_ts"
         result["eta_ts"] = result.pop("x")[0]
@@ -1341,9 +1382,9 @@ class WingBoxOptimization(Optimization):
     def __init__(self, typical_section: TypicalSection):
         self.typical_section = typical_section
 
-    def optimize(self) -> dict:
+    def optimize(self, display: bool = False) -> dict:
         """Optimizes wingbox geometry to match wing properties."""
-        result = super().optimize()
+        result = super().optimize(display=display)
         result["wingbox"] = self.get_wingbox(result["x"])
         return result
 
