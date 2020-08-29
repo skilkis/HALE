@@ -17,7 +17,6 @@ from datetime import datetime
 from functools import cached_property, partial
 from typing import Dict, List, NamedTuple, Optional, Tuple, Union
 
-import dufte
 import matplotlib
 import numpy as np
 import rich
@@ -33,6 +32,9 @@ from sectionproperties.pre.sections import Geometry
 
 FigureHandle = Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
 """Defines the type of a plot return."""
+
+
+plt.style.use("ggplot")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -1073,7 +1075,6 @@ class WingBox(Geometry, FEMAnalysisMixin):
 
     def plot_geometry(self, n_points: float = 100) -> FigureHandle:
         """Plots the geometry of the current :py:class:`WingBox`."""
-        plt.style.use(dufte.style)
         fig, ax = plt.subplots()
 
         self.plot_airfoil(ax, n_points=n_points)
@@ -1544,7 +1545,6 @@ def plot_ts_optimization_results(
     results: Dict[TSOptimization, dict]
 ) -> FigureHandle:
     """Plots error of each specialized :py:class:`TSOptimizer`."""
-    plt.style.use(dufte.style)
     fig, ax = plt.subplots()
     ax.set_yscale("log")
     ax.set_ylabel(
@@ -1554,7 +1554,7 @@ def plot_ts_optimization_results(
 
     for result in results.values():
         result["instance"].plot_objective(ax)
-    dufte.legend()
+    ax.legend(loc="best")
     plt.show()
     return fig, ax
 
