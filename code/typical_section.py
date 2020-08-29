@@ -37,6 +37,9 @@ FigureHandle = Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
 class Wing:
     """Defines Daedelus wing parameters used in aeroelastic anlysis.
 
+    This can be regarded as the single source of truth for the input
+    parameters of the entire analysis.
+
     Note:
         Some of these quantities are expressed on a per-unit length
         basis as is typical for aeroelastic analysis, also
@@ -62,10 +65,6 @@ class Wing:
             Area Moment of Inertia, I, in SI Newton meter squared
         torsional_rigidity: Product of Modulus of Rigidity, G, and the
             Polar Area Moment of Inertia, J, in SI Newton meter squared
-        measured_heave_frequency: Structural natural frequency of the
-            first bending mode in SI radian
-        measured_torsion_frequency: Structural natural frequency of the
-            first torsion mode in SI radian
     """
 
     half_span: float = 16
@@ -78,8 +77,6 @@ class Wing:
     center_of_gravity: float = 0.5
     bending_rigidity: float = 2e4
     torsional_rigidity: float = 1e4
-    measured_heave_frequency: float = 2.243
-    measured_torsion_frequency: float = 31.046
 
 
 @dataclasses.dataclass(frozen=True)
@@ -810,6 +807,8 @@ class UnsteadyAeroelasticModel(AeroelasticModel):
 
 
 class Point(NamedTuple):
+    """Defines a 2D point tuple (x, y)."""
+
     x: float
     y: float
 
@@ -1234,7 +1233,6 @@ class TSOptimization(Optimization):
 
     eta_ts = DesignVariable(initial=0.75, lower=1e-6, upper=1)
 
-
     def optimize(self) -> dict:
         """Optimizes TS location using :py:meth:`objective_function`."""
         result = super().optimize()
@@ -1270,40 +1268,49 @@ class TSOptimization(Optimization):
 
 
 class HeaveTSOptimization(TSOptimization):
-    """Optimizes TS location to match heave frequency."""
+    """Optimizes TS location to match heave frequency.
+
+    Attributes:
+        measured_heave_frequency: Measured structural natural
+            frequency of the wing corresponding to the first heave
+            mode in SI radian
+    """
 
     plot_name = "Heave"
+    target_heave_frequency: float = 2.243
 
-    @staticmethod
-    def objective_function(eta_ts: Union[float, np.ndarray]) -> float:
+    def objective_function(self, eta_ts: Union[float, np.ndarray]) -> float:
         """Returns the squared residual w.r.t the heave frequency."""
-        ts = TypicalSection(eta_ts=eta_ts)
-        sm = StructuralModel(typical_section=ts)
-        return (sm.coupled_heave_frequency - ts.measured_heave_frequency) ** 2
+        sm = StructuralModel(typical_section=TypicalSection(eta_ts=eta_ts))
+        return (sm.coupled_heave_frequency - self.target_heave_frequency) ** 2
 
 
 class TorsionTSOptimization(TSOptimization):
-    """Optimizes TS location to match torsion frequency."""
+    """Optimizes TS location to match torsion frequency.
+
+    Attributes:
+        measured_torsion_frequency: Measured structural natural
+            frequency of the wing corresponding to the first torsion
+            mode in SI radian
+    """
 
     plot_name = "Torsion"
+    target_torsion_frequency: float = 31.046
 
-    @staticmethod
-    def objective_function(eta_ts: Union[float, np.ndarray]) -> float:
+    def objective_function(self, eta_ts: Union[float, np.ndarray]) -> float:
         """Returns the squared residual w.r.t the torsion frequency."""
-        ts = TypicalSection(eta_ts=eta_ts)
-        sm = StructuralModel(typical_section=ts)
+        sm = StructuralModel(typical_section=TypicalSection(eta_ts=eta_ts))
         return (
-            sm.coupled_torsion_frequency - ts.measured_torsion_frequency
+            sm.coupled_torsion_frequency - self.target_torsion_frequency
         ) ** 2
 
 
-class SimultaneousTSOptimization(TSOptimization):
+class SimultaneousTSOptimization(HeaveTSOptimization, TorsionTSOptimization):
     """Optimizes TS location to match both torsion/heave frequency."""
 
     plot_name = "Simultaneous"
 
-    @staticmethod
-    def objective_function(eta_ts: Union[float, np.ndarray]) -> float:
+    def objective_function(self, eta_ts: Union[float, np.ndarray]) -> float:
         """Returns the RSS of both the heave and torsion residual.
 
         Note:
@@ -1314,9 +1321,9 @@ class SimultaneousTSOptimization(TSOptimization):
             minimize the residual for both the heave and torsional
             frequency simultaneously.
         """
-        torsion_rss = TorsionTSOptimization.objective_function(eta_ts=eta_ts)
-        heave_rss = HeaveTSOptimization.objective_function(eta_ts=eta_ts)
-        return torsion_rss + heave_rss
+        t_rss = TorsionTSOptimization.objective_function(self, eta_ts=eta_ts)
+        h_rss = HeaveTSOptimization.objective_function(self, eta_ts=eta_ts)
+        return t_rss + h_rss
 
 
 class WingBoxOptimization(Optimization):
