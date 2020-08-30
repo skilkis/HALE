@@ -371,7 +371,7 @@ class AeroelasticModel(StructuralModel, metaclass=ABCMeta):
             eigen_values = self.get_eigen_values_at(velocity[0])
             return np.product(eigen_values[eigen_values.imag != 0].real)
 
-        return optimize.fsolve(objective_function, x0=[50])[0]
+        return float(optimize.fsolve(objective_function, x0=[50]))
 
     @cached_property
     def divergence_speed(self) -> float:
@@ -385,7 +385,22 @@ class AeroelasticModel(StructuralModel, metaclass=ABCMeta):
             eigen_values = self.get_eigen_values_at(velocity[0])
             return np.product(eigen_values[eigen_values.imag == 0].real)
 
-        return optimize.fsolve(objective_function, x0=[50])[0]
+        return float(optimize.fsolve(objective_function, x0=[50]))
+
+    @cached_property
+    def flutter_frequency(self) -> float:
+        """Flutter frequency in SI radian per second."""
+        eig = self.get_eigen_values_at(self.flutter_speed)
+        return float(eig[(eig.real > 0) & (eig.imag > 0)].imag)
+
+    @cached_property
+    def reduced_flutter_frequency(self) -> float:
+        """Non-dimensionalized flutter reduced frequency."""
+        return (
+            self.flutter_frequency
+            * self.typical_section.half_chord
+            / self.flutter_speed
+        )
 
     @cached_property
     def input_matrix(self) -> np.ndarray:
@@ -426,13 +441,6 @@ class AeroelasticModel(StructuralModel, metaclass=ABCMeta):
             alpha_0: Initial rigid Angle of Attack (AoA) of the wing
             time: Discretized time array to run the simulation at
             plot: Toggles plotting of the linear simulation results
-
-        We need to augment the state-matrix with the constant
-        aerodynamic moment term using:
-        https://math.stackexchange.com/a/2149853
-
-        THIS IS NO LONGER REQUIRED AS THE MOMENT IS ZERO DUE TO
-        THIN AIRFOIL THEORY
         """
         state_matrix = self.state_matrix
         system = signal.StateSpace(
