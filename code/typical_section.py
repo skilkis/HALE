@@ -4,6 +4,24 @@ This module is developed for the TU Delft master course AE4ASM506
 Aeroelasticity. Although it is against software best practice, all
 abstractions and analysis are contained within this single module as per
 the request of the lecturer.
+
+The code is structured such that first the input
+:py:class:`Wing` and :py:class:`TypicalSection` are defined. Afterwards
+the structural and aeroelastic models are defined.
+
+Next, the Finite Element Model (FEM) and wingbox geometry are defined.
+Followed, finally by the optimization framework abstraction along with
+the subsequent optimizations specializations and sensitivity analysis.
+
+At the end of the file, the assignment script is encapsulated within a
+conditional statement::
+
+   if __name__ == "__main__":
+       ...
+
+This conditional statement ensures that the assignment script is only
+run when this file is run as a script and not when importing any of the
+abstractions.
 """
 
 from __future__ import annotations
@@ -1816,80 +1834,81 @@ if __name__ == "__main__":
     plot_ts_optimization_results(opt_results)
 
     torsion_ts = opt_results[TorsionTSOptimization]["ts_opt"]
-    aero_model = UnsteadyAeroelasticModel(torsion_ts, velocity=30)
+    simultaneous_ts = opt_results[SimultaneousTSOptimization]["ts_opt"]
+    aero_model = UnsteadyAeroelasticModel(simultaneous_ts, velocity=30)
     print("Divergence Velocity:\n", aero_model.divergence_speed)
     print("Flutter Velocity:\n", aero_model.flutter_speed)
     aero_model.simulate(5, np.linspace(0, 10, 1000))
 
-    # Task 14 & 15 ----------------------------------------------------- # noqa
-    print("\n Task 14: Understanding Structural Modifications")
-    if RUN_OPTIMIZATIONS:
-        geometric_opt = GeometricWingBoxOptimization(
-            typical_section=torsion_ts
-        )
-        geometric_result = geometric_opt.optimize(display=True)
-        print(geometric_result)
-        geometric_wbox = geometric_result["wingbox"]
-        geometric_opt.save_history()
+    # # Task 14 & 15 ----------------------------------------------------- # noqa
+    # print("\n Task 14: Understanding Structural Modifications")
+    # if RUN_OPTIMIZATIONS:
+    #     geometric_opt = GeometricWingBoxOptimization(
+    #         typical_section=torsion_ts
+    #     )
+    #     geometric_result = geometric_opt.optimize(display=True)
+    #     print(geometric_result)
+    #     geometric_wbox = geometric_result["wingbox"]
+    #     geometric_opt.save_history()
 
-        # Creating plots of the geometrically optimized wingbox
-        fig, _ = plot_wbox_optimization_history(optimizer=geometric_opt)
-        savefig(fig, "geometric_wbox_opt_history.pdf")
-    else:
-        geometric_wbox = WingBox(
-            x_start=0.23454548804408806,
-            x_end=0.6848234941195622,
-            t_fs=0.005214486372877884,
-            t_rs=0.03970339376830019,
-            t_skin=0.009682362298690142,
-        )
-    fig, _ = geometric_wbox.plot_centroids()
-    savefig(fig, "geometric_wbox_opt_centroids.pdf")
+    #     # Creating plots of the geometrically optimized wingbox
+    #     fig, _ = plot_wbox_optimization_history(optimizer=geometric_opt)
+    #     savefig(fig, "geometric_wbox_opt_history.pdf")
+    # else:
+    #     geometric_wbox = WingBox(
+    #         x_start=0.23454548804408806,
+    #         x_end=0.6848234941195622,
+    #         t_fs=0.005214486372877884,
+    #         t_rs=0.03970339376830019,
+    #         t_skin=0.009682362298690142,
+    #     )
+    # fig, _ = geometric_wbox.plot_centroids()
+    # savefig(fig, "geometric_wbox_opt_centroids.pdf")
 
-    # Analyzing how wingbox variables affect aeroelastic speeds
-    wbox_sensitivity = WingBoxSensitivityAnalysis(
-        typical_section=torsion_ts, initial_wing_box=geometric_wbox
-    )
-    fig, _ = wbox_sensitivity.plot_sensitivity()
-    savefig(fig, "wingbox_aeroelastic_sensitivity.pdf")
-    wbox_sensitivity.save_sensitivity()
+    # # Analyzing how wingbox variables affect aeroelastic speeds
+    # wbox_sensitivity = WingBoxSensitivityAnalysis(
+    #     typical_section=torsion_ts, initial_wing_box=geometric_wbox
+    # )
+    # fig, _ = wbox_sensitivity.plot_sensitivity()
+    # savefig(fig, "wingbox_aeroelastic_sensitivity.pdf")
+    # wbox_sensitivity.save_sensitivity()
 
-    # Analyzing how typical section variables affect aeroelastic speeds
-    ts_sensitivity = TypicalSectionSensitivityAnalysis(
-        typical_section=torsion_ts
-    )
-    fig, _ = ts_sensitivity.plot_sensitivity()
-    savefig(fig, "typical_section_aeroelastic_sensitivity.pdf")
-    ts_sensitivity.save_sensitivity()
+    # # Analyzing how typical section variables affect aeroelastic speeds
+    # ts_sensitivity = TypicalSectionSensitivityAnalysis(
+    #     typical_section=torsion_ts
+    # )
+    # fig, _ = ts_sensitivity.plot_sensitivity()
+    # savefig(fig, "typical_section_aeroelastic_sensitivity.pdf")
+    # ts_sensitivity.save_sensitivity()
 
-    # Analyzing how wingbox variables affect the typical section
-    wbox_ts_sensitivity = WingBoxTSSensitivityAnalysis(
-        typical_section=torsion_ts, initial_wing_box=geometric_wbox
-    )
-    wbox_ts_sensitivity.save_sensitivity()
+    # # Analyzing how wingbox variables affect the typical section
+    # wbox_ts_sensitivity = WingBoxTSSensitivityAnalysis(
+    #     typical_section=torsion_ts, initial_wing_box=geometric_wbox
+    # )
+    # wbox_ts_sensitivity.save_sensitivity()
 
-    # Task 16 ---------------------------------------------------------- # noqa
-    print("\n Task 16: Structural Optimization to Match Speeds")
-    aeroelastic_opt = AeroelasticWingBoxOptimization(
-        typical_section=torsion_ts, initial_wing_box=geometric_wbox
-    )
-    if RUN_OPTIMIZATIONS:
-        aeroelastic_result = aeroelastic_opt.optimize(display=True)
-        print(aeroelastic_result)
-        aeroelastic_wbox = aeroelastic_result["wingbox"]
-        aeroelastic_opt.save_history()
+    # # Task 16 ---------------------------------------------------------- # noqa
+    # print("\n Task 16: Structural Optimization to Match Speeds")
+    # aeroelastic_opt = AeroelasticWingBoxOptimization(
+    #     typical_section=torsion_ts, initial_wing_box=geometric_wbox
+    # )
+    # if RUN_OPTIMIZATIONS:
+    #     aeroelastic_result = aeroelastic_opt.optimize(display=True)
+    #     print(aeroelastic_result)
+    #     aeroelastic_wbox = aeroelastic_result["wingbox"]
+    #     aeroelastic_opt.save_history()
 
-        # Creating plots of the aeroelastically optimized wingbox
-        fig, _ = plot_wbox_optimization_history(optimizer=aeroelastic_opt)
-        savefig(fig, "aeroelastic_wbox_opt_history.pdf")
-    else:
-        aeroelastic_wbox = WingBox(
-            x_start=0.2172114623883768,
-            x_end=0.55,
-            t_fs=0.008458459838219579,
-            t_rs=0.041504879385093146,
-            t_skin=0.01688176404495601,
-        )
+    #     # Creating plots of the aeroelastically optimized wingbox
+    #     fig, _ = plot_wbox_optimization_history(optimizer=aeroelastic_opt)
+    #     savefig(fig, "aeroelastic_wbox_opt_history.pdf")
+    # else:
+    #     aeroelastic_wbox = WingBox(
+    #         x_start=0.2172114623883768,
+    #         x_end=0.55,
+    #         t_fs=0.008458459838219579,
+    #         t_rs=0.041504879385093146,
+    #         t_skin=0.01688176404495601,
+    #     )
 
-    fig, _ = aeroelastic_wbox.plot_centroids()
-    savefig(fig, "aeroelastic_wbox_opt_centroids.pdf")
+    # fig, _ = aeroelastic_wbox.plot_centroids()
+    # savefig(fig, "aeroelastic_wbox_opt_centroids.pdf")
