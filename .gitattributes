@@ -14,6 +14,9 @@
 *.{cmd,[cC][mM][dD]} text eol=crlf
 *.{bat,[bB][aA][tT]} text eol=crlf
 
+# Force LaTeX Files to use LF line endings
+*.tex text eol=lf
+
 # -- Git Large File System (LFS) ----------------------------------------------
 
 # Archives
