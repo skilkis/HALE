@@ -1,13 +1,15 @@
+# Copyright (c) 2020. San Kilkis.
+# All rights reserved.  https://github.com/skilkis
+
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/
+
 """Contains definitions for aeroelastic analysis with typical sections.
 
-This module is developed for the TU Delft master course AE4ASM506
-Aeroelasticity. Although it is against software best practice, all
-abstractions and analysis are contained within this single module as per
-the request of the lecturer.
-
-The code is structured such that first the input
-:py:class:`Wing` and :py:class:`TypicalSection` are defined. Afterwards
-the structural and aeroelastic models are defined.
+The code is structured such that first the input :py:class:`Wing` and
+:py:class:`TypicalSection` are defined. Afterwards the structural and
+aeroelastic models are defined.
 
 Next, the Finite Element Model (FEM) and wingbox geometry are defined.
 Followed, finally by the optimization framework abstraction along with
@@ -22,6 +24,12 @@ conditional statement::
 This conditional statement ensures that the assignment script is only
 run when this file is run as a script and not when importing any of the
 abstractions.
+
+Note:
+    This module is developed for the TU Delft master course AE4ASM506
+    Aeroelasticity. Although it is against software best practice, all
+    abstractions and analysis are contained within this single module as
+    per the request of the lecturer.
 """
 
 from __future__ import annotations
