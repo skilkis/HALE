@@ -501,13 +501,75 @@ class AeroelasticModel(StructuralModel, metaclass=ABCMeta):
         plt.xlabel("Time [s]", fontsize=12)
         fig.align_ylabels(axes)
 
-    def plot_flutter_diagram(self):
+    def plot_frequency_diagram(
+        self, start_velocity: float = 0.1, end_velocity: float = 40
+    ) -> FigureHandle:
+        """Plots the frequency value across the specified velocities."""
         fig, ax = plt.subplots()
-        v_range = np.linspace(0.1, 40, 1000)
-        eigen_values = [self.get_eigen_values_at(v).real for v in v_range]
 
-        ax.plot(v_range, eigen_values)
+        ax.plot(
+            v_range := np.linspace(start_velocity, end_velocity, 1000),
+            [self.get_eigen_values_at(v).imag for v in v_range],
+        )
+        ax.set_xlabel("Flight Velocity [m/s]")
+        ax.set_ylabel("Frequency [rad/s]")
+        self.add_annotations_to_diagram(ax)
         return fig, ax
+
+    def plot_damping_diagram(
+        self, start_velocity: float = 0.1, end_velocity: float = 40
+    ) -> FigureHandle:
+        """Plots the damping value across the specified velocities."""
+        fig, ax = plt.subplots()
+
+        ax.plot(
+            v_range := np.linspace(start_velocity, end_velocity, 1000),
+            [self.get_eigen_values_at(v).real for v in v_range],
+        )
+        ax.set_xlabel("Flight Velocity [m/s]")
+        ax.set_ylabel("Damping [Ns/m]")
+        self.add_annotations_to_diagram(ax)
+        return fig, ax
+
+    def plot_damping_ratio_diagram(
+        self, start_velocity: float = 0.1, end_velocity: float = 40
+    ) -> FigureHandle:
+        """Plots the damping ratio across the specified velocities."""
+        fig, ax = plt.subplots()
+
+        ax.plot(
+            v_range := np.linspace(start_velocity, end_velocity, 1000),
+            [
+                -(eig := self.get_eigen_values_at(v)).real / np.abs(eig.imag)
+                for v in v_range
+            ],
+        )
+        ax.set_xlabel("Flight Velocity [m/s]")
+        ax.set_ylabel(r"Damping Ratio, $\xi$ [-]")
+        self.add_annotations_to_diagram(ax)
+        return fig, ax
+
+    def add_annotations_to_diagram(self, ax: matplotlib.axes.Axes) -> None:
+        """Adds flutter and divergence speed annotations to ``ax``."""
+        y = ((y_lim := ax.get_ylim())[1] - y_lim[0]) * 0.5 + y_lim[0]
+        speeds = (self.flutter_speed, self.divergence_speed)
+        labels = ("V_f", "V_d")
+        bbox_settings = dict(
+            boxstyle="round", facecolor="white", edgecolor="black", pad=0.5,
+        )
+        for speed, label in zip(speeds, labels):
+            ax.text(
+                speed,
+                y,
+                f"${label} = {speed:.2f}$ [m/s]",
+                fontsize=8,
+                rotation="vertical",
+                horizontalalignment="center",
+                verticalalignment="center",
+                rotation_mode="anchor",
+                bbox=bbox_settings,
+            )
+            ax.axvline(speed, color="black", linestyle="--", linewidth=1)
 
 
 class SteadyAeroelasticModel(AeroelasticModel):
