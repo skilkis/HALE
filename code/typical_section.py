@@ -60,6 +60,9 @@ from sectionproperties.pre.sections import Geometry
 FigureHandle = Tuple[matplotlib.figure.Figure, matplotlib.axes.Axes]
 """Defines the type of a plot return."""
 
+SimulationData = Tuple[np.ndarray, np.ndarray, np.ndarray]
+"""Defines the type of a state-space simulation return."""
+
 ROOT_DIR = Path(__file__).parent.parent
 FIGURE_DIR = ROOT_DIR / "docs" / "figures"
 DATA_DIR = ROOT_DIR / "docs" / "data"
@@ -460,7 +463,7 @@ class AeroelasticModel(StructuralModel, metaclass=ABCMeta):
 
     def simulate(
         self, alpha_0: float, time: np.ndarray, plot: bool = True,
-    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> Union[SimulationData, Tuple[SimulationData, FigureHandle]]:
         """Simulates response of the degrees of freedom.
 
         Args:
@@ -478,11 +481,12 @@ class AeroelasticModel(StructuralModel, metaclass=ABCMeta):
         u = np.ones(time.shape, dtype=np.float64) * math.radians(alpha_0)
         time, y_out, x_out = signal.lsim(system, u, time)
         if plot:
-            self.plot_simulation(time, x_out)
+            fig, ax = self.plot_simulation(time, x_out)
+            return (time, y_out, x_out), (fig, ax)
         return time, y_out, x_out
 
     @staticmethod
-    def plot_simulation(time: np.ndarray, x_out: np.ndarray) -> None:
+    def plot_simulation(time: np.ndarray, x_out: np.ndarray) -> FigureHandle:
         """Plots the degrees of freedom of the aeroelastic model."""
         fig, axes = plt.subplots(nrows=4, sharex=True)
         labels = [
@@ -500,6 +504,7 @@ class AeroelasticModel(StructuralModel, metaclass=ABCMeta):
             ax.yaxis.set_tick_params(labelsize=10, pad=1)
         plt.xlabel("Time [s]", fontsize=12)
         fig.align_ylabels(axes)
+        return fig, axes
 
     def plot_frequency_diagram(
         self, start_velocity: float = 0.1, end_velocity: float = 40
