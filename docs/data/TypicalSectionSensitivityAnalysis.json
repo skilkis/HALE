@@ -1,0 +1,26 @@
+{
+    "airfoil_mass": {
+        "flutter": 0.2023832743172183,
+        "divergence": 4.781017981489935e-13
+    },
+    "airfoil_inertia": {
+        "flutter": -0.24890037945439236,
+        "divergence": 3.2510922274131556e-13
+    },
+    "elastic_axis": {
+        "flutter": 0.015061678356598612,
+        "divergence": -0.9852457023320049
+    },
+    "center_of_gravity": {
+        "flutter": -0.949338703463525,
+        "divergence": 5.163499420009129e-13
+    },
+    "bending_rigidity": {
+        "flutter": -0.0031659158412400573,
+        "divergence": -2.1036479118555715e-13
+    },
+    "torsional_rigidity": {
+        "flutter": 0.5019063440628507,
+        "divergence": 0.49875621120901664
+    }
+}

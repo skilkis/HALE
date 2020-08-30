@@ -1,0 +1,42 @@
+{
+    "x_start": {
+        "airfoil_mass": -0.4532269834914615,
+        "airfoil_inertia": -0.2746400119032766,
+        "elastic_axis": 0.25202057172011294,
+        "center_of_gravity": 0.2118572023235732,
+        "bending_rigidity": -0.8744056404631738,
+        "torsional_rigidity": -1.3921273208350249
+    },
+    "x_end": {
+        "airfoil_mass": 0.4475130024048646,
+        "airfoil_inertia": 0.5795890461834097,
+        "elastic_axis": 0.16945299320183516,
+        "center_of_gravity": 0.5696324435988886,
+        "bending_rigidity": 0.07281318091270805,
+        "torsional_rigidity": 2.937888548930023
+    },
+    "t_fs": {
+        "airfoil_mass": -0.04912178060304898,
+        "airfoil_inertia": -0.000711761258001542,
+        "elastic_axis": -0.15079026448130417,
+        "center_of_gravity": -0.027644553559058593,
+        "bending_rigidity": -0.27374577304841297,
+        "torsional_rigidity": -0.0036078584700953795
+    },
+    "t_rs": {
+        "airfoil_mass": 0.16537216699104756,
+        "airfoil_inertia": 0.014997348426373791,
+        "elastic_axis": 0.04535997864274499,
+        "center_of_gravity": 0.07780279494402631,
+        "bending_rigidity": -0.24384804933482881,
+        "torsional_rigidity": 0.07602030869340524
+    },
+    "t_skin": {
+        "airfoil_mass": 0.5217800640543373,
+        "airfoil_inertia": 0.0673045407616063,
+        "elastic_axis": 0.08629308189573859,
+        "center_of_gravity": -0.07145435093783847,
+        "bending_rigidity": 0.4412369146574747,
+        "torsional_rigidity": 0.3411611052634726
+    }
+}
