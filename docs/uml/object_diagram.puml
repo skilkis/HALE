@@ -1,0 +1,295 @@
+@startuml object_diagram
+!include ./theme.puml
+
+
+
+
+class abc.ABCMeta << (M,#FF7700) metaclass >> {
+    + register(): None
+    + __subclasshook__(): bool or NotImplemented
+}
+
+package sectionproperties {
+    class MeshInfo {
+    }
+    class CrossSection {
+    }
+    class Geometry {
+
+    }
+}
+
+package "HALE" as hale {
+
+    package typical_section {
+
+        class Wing {
+            + half_span: float
+            + chord: float
+            + airfoil: Airfoil
+            + airfoil_mass: float
+            + airfoil_inertia: float
+            + elastic_axis: float
+            + center_of_gravity: float
+            + bending_rigidity: float
+            + torsional_rigidity: float
+            + lag_rigidity: float
+            + heave_frequency: float
+            + torsion_frequency: float
+            + lift_gradient: float
+        }
+
+        TypicalSection *-- Wing
+        class TypicalSection {
+            + wing: Wing
+            + normalized_location: float
+            # y_ts: float
+            # half_chord: float
+            # x_theta: float
+            # i_theta: float
+            # lift_moment_arm: float
+            # mass_matrix: np.ndarray
+            # unit_bending_stiffness: float
+            # unit_torsion_stiffness: float
+            # stiffness_matrix: np.ndarray
+            # mass_spring_eigen_solution: Tuple[np.ndarray, np.ndaray]
+            # coupled_heave_frequency: float
+            # coupled_torsion_frequency: float
+            # uncoupled_heave_frequency: float
+            # uncoupled_torsion_frequency: float
+        }
+
+        class DesignVariable {
+            + initial: float
+            + lower: float
+            + upper: float
+        }
+
+        abc.ABCMeta <|-- OptimizationMeta
+        class OptimizationMeta << (M,#FF7700) metaclass >> {
+            + call(): object
+        }
+
+        OptimizationMeta -- Optimization
+        class Optimization {
+            + default_options: dict
+            + history: dict
+            + design_vector: dict
+            + normalize: bool
+            # bounds: list
+            # normalized_bounds: list
+            # x0: np.ndarray
+            # variable_names: tuple
+            + get_design_variables(): dict
+            + optimize(): dict
+            + log():
+            + {abstract} objective_function(): float
+            + unnormalize(): float
+            + __post_init__(): None
+        }
+
+        Optimization <|-- TSOptimization
+        class TSOptimization {
+            + eta_ts: DesignVariable
+            + optimize(): dict
+            + {abstract} objective_function(): float
+            # {abstract} plot_name: str
+            + plot_objective(): matplotlib.axes.Axes
+        }
+
+        TSOptimization <|-- HeaveTSOptimization
+        class HeaveTSOptimization{
+            + plot_name: str
+            + objective_function: float
+        }
+
+        TSOptimization <|-- TorsionTSOptimization
+        class TorsionTSOptimization{
+            + plot_name: str
+            + objective_function: float
+        }
+
+        TSOptimization <|-- SimultaneousTSOptimization
+        class SimultaneousTSOptimization{
+            + plot_name: str
+            + objective_function: float
+        }
+
+        AeroelasticModel *-- TypicalSection
+        class AeroelasticModel {
+            + typical_section
+            # wing
+            # structural_mass_matrix: np.ndarray
+            # structural_damping_matrix: np.ndarray
+            # structural_stiffness_matrix: np.ndarray
+            # {abstract} aerodynamic_mass_matrix: np.ndarray
+            # {abstract} aerodynamic_damping_matrix: np.ndarray
+            # {abstract} aerodynamic_stiffness_matrix: np.ndarray
+            # {abstract} divergence_speed: float
+            # {abstract} flutter_speed: float
+            + {abstract} get_state_matrix_at(): np.ndarray
+            + {abstract} simulate_at(): None???
+        }
+
+        AeroelasticModel <|-- SteadyAeroelasticModel
+
+        class SteadyAeroelasticModel {
+            # divergence_pressure: float
+            # divergence_speed: float
+            # structural_mass_matrix: np.ndarray
+            # structural_damping_matrix: np.ndarray
+            # structural_stiffness_matrix: np.ndarray
+            # aerodynamic_mass_matrix: np.ndarray
+            # aerodynamic_damping_matrix: np.ndarray
+            # aerodynamic_stiffness_matrix: np.ndarray
+        }
+
+        MeshInfo -- FEMAnalysisMixin
+        class FEMAnalysisMixin {
+            + mesh_size: float
+            # section: CrossSection
+            # mesh: MeshInfo
+            # bending_inertia: float
+            # chordwise_inertia: float
+            # polar_inertia: float
+            # area: float
+            # torsion_constant: float
+            # centroid: tuple
+            # shear_center: tuple
+            - _has_geometry_run: bool
+            - _has_warping_run: bool
+            + ensure_geometry_has_run(): None
+            + ensure_warping_has_run(): None
+        }
+
+        FEMAnalysisMixin <|-- WingBox
+        Geometry <|-- WingBox
+
+        class WingBox {
+            + x_start: float
+            + x_end: float
+            + t_fs: float
+            + t_rs: float
+            + t_skin: float
+            + airfoil: Airfoil
+            + n_points: int
+            + shift: tuple
+            + mesh_size: float
+            # points: np.ndarray
+            # holes: np.ndarray
+            # facets: list
+            # control_points: np.ndarray
+            # perimeter: list
+            # outer_points: np.ndarray
+            # inner_points: np.ndarray
+            + {static} get_facets: list
+            + plot_airfoil(): None
+            + plot_geometry(): FigureHandle
+            + plot_mesh(): FigureHandle
+            + plot_centroids(): FigureHandle
+        }
+
+        WingBox -- WingBoxOptimization
+        Optimization <|-- WingBoxOptimization
+        class WingBoxOptimization {
+            + x_start: DesignVariable
+            + x_end: DesignVariable
+            + t_fs: DesignVariable
+            + t_rs: DesignVariable
+            + t_skin: DesignVariable
+            + normalize: bool
+            + default_options: dict
+            + __init__(): None
+            + optimize(): dict
+            + get_wingbox: WingBox
+        }
+
+        WingBoxOptimization <|-- GeometricWingBoxOptimization
+        class GeometricWingBoxOptimization {
+            + objective_function(): float
+        }
+
+        WingBoxOptimization <|-- AeroelasticWingBoxOptimization
+        class AeroelasticWingBoxOptimization {
+            + wing: Wing
+            + typical_section: TypicalSection
+            + initial_wing_box: WingBox
+            # target_velocity: float
+            + objective_function(): float
+            + run_aeroelastic_model(): tuple
+        }
+        ' numpy.ndarray <|-- Geom2D
+        ' Geom2D <|-- Point2D
+        ' Point2D <|-- Vector2D
+        ' abc.ABCMeta <|-- Airfoil
+        ' Airfoil <|-- NACA4Airfoil
+        ' NACA4Airfoil <|-- ParabolicCamberAirfoil
+        ' Point2D -- Airfoil
+        ' Geom2D <|-- Panel2D
+
+    '     class Geom2D {
+    '         + __new__(array): Geom2D
+    '     }
+
+    '     Vector2D -- Point2D
+    '     class Point2D {
+    '         + x: np.ndarray
+    '         + y: np.ndarray
+    '         + __sub__(other): Vector2D or np.ndarray
+    '     }
+
+    '     class Vector2D {
+    '         + magnitude: np.ndarray
+    '         + normalized: np.ndarray
+    '     }
+
+    '     Vector2D -- Panel2D
+    '     Point2D -- Panel2D
+    '     class Panel2D {
+    '         # n_panels: int
+    '         # nodes: tuple(Point2D, Point2D)
+    '         # tangents: Vector2D
+    '         # normals: Vector2D
+    '         # angles: np.ndarray
+    '         # lengths: np.ndarray
+    '         + points_at(u): Point2D
+    '         + plot(show): tuple
+    '         + __new__(array): Panel2D
+    '         + __getitem__(item): Point2D or np.ndarray
+
+    '     }
+
+    '     class Airfoil {
+    '         {abstract} cambered: bool
+    '         {abstract} camberline_at(x): Point2D
+    '         {abstract} upper_surface_at(x): Point2D
+    '         {abstract} lower_surface_at(x): Point2D
+    '         {abstract} ensure_1d_vector(x): Point2D
+    '     }
+
+    '     class NACA4Airfoil {
+    '         + max_camber: float
+    '         + camber_location: float
+    '         + max_thickness: float
+    '         + te_closed: bool = True
+    '         + cambered: bool
+    '         + name: str
+    '         + camberline_at(x): Point2D
+    '         + camber_tangent_at(x): Point2D
+    '         + camber_normal_at(x): Point2D
+    '         + upper_surface_at(x): Point2D
+    '         + lower_surface_at(x): Point2D
+    '         + offset_vectors_at(x): Point2D
+    '         + half_thickness_at(x): Point2D
+    '         + plot(n_points, show): tuple
+    '         + {static} parse_naca_code(naca_code): map
+    '     }
+
+    '     class ParabolicCamberAirfoil {
+    '         + eta: float
+    '         + name: str
+    '         + camberline_at(x): Point2D
+    '     }
+    ' }
+
+@enduml

@@ -1,0 +1,67 @@
+' "Tomorrow night eighties" color theme
+' (see https://github.com/chriskempson/tomorrow-theme)
+!define Background   #2d2d2d
+!define CurrentLine  #393939
+!define Selection    #515151
+!define Foregound    #cccccc
+!define Comment      #999999
+!define Red          #f2777a
+!define Orange       #f99157
+!define Yellow       #ffcc66
+!define Green        #99cc99
+!define Aqua         #66cccc
+!define Blue         #6699cc
+!define Purple       #cc99cc
+!define Font         #a0a0a0
+
+skinparam linetype ortho
+skinparam Shadowing false
+skinparam backgroundColor Background
+skinparam Arrow {
+  Color Foregound
+  FontColor Foregound
+  FontStyle Bold
+  FillColor Foreground
+}
+skinparam Default {
+'   FontName consolas
+  FontColor Font
+}
+skinparam package {
+  FontColor Purple
+  BackgroundColor CurrentLine
+  BorderColor Selection
+}
+skinparam node {
+  FontColor Yellow
+  BackgroundColor CurrentLine
+  BorderColor Selection
+}
+skinparam component {
+  BackgroundColor Selection
+  BorderColor Blue
+  FontColor Blue
+  Style uml2
+}
+skinparam database {
+  BackgroundColor CurrentLine
+  BorderColor Selection
+  FontColor Orange
+}
+
+skinparam cloud {
+  BackgroundColor CurrentLine
+  BorderColor Selection
+}
+
+skinparam interface {
+  BackgroundColor CurrentLine
+  BorderColor Selection
+  FontColor Green
+}
+
+skinparam class {
+  BackgroundColor CurrentLine
+  BorderColor Selection
+  FontColor Green
+}
