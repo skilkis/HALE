@@ -561,7 +561,7 @@ class AeroelasticModel(StructuralModel, metaclass=ABCMeta):
         """Adds flutter and divergence speed annotations to ``ax``."""
         y = ((y_lim := ax.get_ylim())[1] - y_lim[0]) * 0.5 + y_lim[0]
         speeds = (self.flutter_speed, self.divergence_speed)
-        labels = ("V_f", "V_d")
+        labels = ("U_f", "U_d")
         bbox_settings = dict(
             boxstyle="round", facecolor="white", edgecolor="black", pad=0.5,
         )
