@@ -1515,6 +1515,199 @@ class AeroelasticWingBoxOptimization(WingBoxOptimization):
         return error
 
 
+class SensitivityAnalysis:
+    """Defines a sensitivity analysis of aeroelastic speeds."""
+
+    aeroelastic_model: AeroelasticModel = UnsteadyAeroelasticModel
+
+    def __init__(self, typical_section: TypicalSection):
+        self.typical_section = typical_section
+
+    @cached_property
+    def initial_aero_model(self) -> AeroelasticModel:
+        """Initial unsteady aeroelastic model."""
+        return self.aeroelastic_model(typical_section=self.typical_section)
+
+    @property
+    @abstractmethod
+    def variables(self) -> List[str]:
+        """Defines the variable names for the sensitivty analysis."""
+
+    @property
+    @abstractmethod
+    def labels(self) -> List[str]:
+        """Defines the labels used for plotting."""
+
+    @abstractmethod
+    def modify_variable(variable: str) -> AeroelasticModel:
+        """Modifies ``variable`` by 1% and returns a new the model."""
+
+    @cached_property
+    def measured_sensitivity(self) -> Dict[str, Dict[str, float]]:
+        """Measures response of speed to change in TS variables."""
+        sensitivity = defaultdict(dict)
+        for name in self.variables:
+            aero_model = self.modify_variable(name)
+            for speed_type in ("flutter", "divergence"):
+                attr_name = f"{speed_type}_speed"
+                sensitivity[name][speed_type] = self.calc_percentage_change(
+                    new_value=getattr(aero_model, attr_name),
+                    old_value=getattr(self.initial_aero_model, attr_name),
+                )
+        return sensitivity
+
+    def plot_sensitivity(self, width: float = 0.5) -> FigureHandle:
+        """Plots a bar-chart of sensitivities.
+
+        Args:
+            width: Width of each bar
+        """
+
+        sensitivity = self.measured_sensitivity
+        labels = self.labels
+        f_sens, d_sens = zip(
+            *((d["flutter"], d["divergence"]) for d in sensitivity.values())
+        )
+        x = np.arange(len(labels))  # the label locations
+
+        fig, ax = plt.subplots()
+        rects1 = ax.bar(x - width / 2, f_sens, width, label="Flutter")
+        rects2 = ax.bar(x + width / 2, d_sens, width, label="Divergence")
+        self.add_labels(ax, rects1)
+        self.add_labels(ax, rects2)
+        ax.set_ylabel("Percentage Change of Speed [%]")
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels)
+        ax.legend()
+
+        return fig, ax
+
+    @staticmethod
+    def add_labels(
+        ax: matplotlib.axes.Axes, rects: List[matplotlib.patches.Rectangle]
+    ) -> None:
+        """Attach a text label above each bar in ``rects``."""
+        for rect in rects:
+            height = rect.get_height()
+            ax.annotate(
+                f"{height:.3f}",
+                xy=(rect.get_x() + rect.get_width() / 2, height),
+                xytext=(0, 3 if height > 0 else -3),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                size=8,
+            )
+
+    @staticmethod
+    def calc_percentage_change(new_value: float, old_value: float) -> float:
+        """Percentage change of ``new_value`` w.r.t ``old_value``."""
+        return ((new_value - old_value) / old_value) * 100
+
+    def save_sensitivity(self, filepath: Optional[str] = None) -> None:
+        """Saves the :py:attr:`measured_sensitivity` dict to JSON file.
+
+        Args:
+            filepath: Sets the output filepath including filename
+        """
+        if filepath is None:
+            filepath = DATA_DIR / (f"{self.__class__.__name__}.json")
+        with open(filepath, "w") as fp:
+            json.dump(self.measured_sensitivity, fp, indent=4)
+
+
+class TypicalSectionSensitivityAnalysis(SensitivityAnalysis):
+    """Analyzes how typical section variables affect speeds."""
+
+    @cached_property
+    def variables(self):  # noqa: D102
+        return [
+            "airfoil_mass",
+            "airfoil_inertia",
+            "elastic_axis",
+            "center_of_gravity",
+            "bending_rigidity",
+            "torsional_rigidity",
+        ]
+
+    @cached_property
+    def labels(self):  # noqa: D102
+        return [
+            "$m_a$",
+            r"$I_{\theta}$",
+            "$x_a$",
+            "$x_{cg}$",
+            "$EI$",
+            "GJ",
+        ]
+
+    def modify_variable(self, variable_name: str) -> AeroelasticModel:
+        """Returns a new aeroelastic model with a modified TS."""
+        kwargs = dataclasses.asdict(self.typical_section)
+        kwargs[variable_name] *= 1.01
+        return self.aeroelastic_model(typical_section=TypicalSection(**kwargs))
+
+
+class WingBoxSensitivityAnalysis(
+    AeroelasticWingBoxOptimization, SensitivityAnalysis
+):
+    """Analyzes how wing box variables affect aeroelastic speeds."""
+
+    @cached_property
+    def variables(self) -> List[str]:  # noqa: D102
+        return self.design_vector.keys()
+
+    @cached_property
+    def labels(self) -> List[str]:  # noqa: D102
+        return [format_plot_variable(v) for v in self.variables]
+
+    def modify_variable(self, variable_name: str) -> AeroelasticModel:
+        """Creates a modified wingbox and returns a new model."""
+        x = np.ones(len(names := self.variable_names), dtype=np.float64)
+        # Increasing the current design variable by 1%
+        x[names.index(variable_name)] = 1.01
+        return self.get_aero_model(x)
+
+
+class WingBoxTSSensitivityAnalysis(WingBoxSensitivityAnalysis):
+    """Analyzes how the wingbox variables affect the typical section."""
+
+    plot_sensitivity = NotImplementedError
+
+    @cached_property
+    def response_variables(self) -> List[str]:
+        """Names of variables the sensitivty is being measured on."""
+        return [
+            "airfoil_mass",
+            "airfoil_inertia",
+            "elastic_axis",
+            "center_of_gravity",
+            "bending_rigidity",
+            "torsional_rigidity",
+        ]
+
+    @cached_property
+    def measured_sensitivity(self) -> Dict[str, Dict[str, float]]:
+        """Measures response of speed to change in TS variables."""
+        sensitivity = defaultdict(dict)
+        for name in self.variables:
+            ts = self.modify_variable(name)
+            for response in self.response_variables:
+                sensitivity[name][response] = self.calc_percentage_change(
+                    new_value=getattr(ts, response),
+                    old_value=getattr(self.typical_section, response),
+                )
+        return sensitivity
+
+    def modify_variable(self, variable_name) -> TypicalSection:
+        """Returns a modified :py:class:`TypicalSection`."""
+        x = np.ones(len(names := self.variable_names), dtype=np.float64)
+        # Increasing the current design variable by 1%
+        x[names.index(variable_name)] = 1.01
+        wbox = self.get_wingbox(x)
+        return self.get_typical_section(wbox)
+
+
 def run_ts_optimizations(
     print_results: bool = True,
 ) -> Dict[TSOptimization, dict]:
@@ -1581,7 +1774,7 @@ def plot_wbox_optimization_history(
             else:
                 ax = t_ax
                 ylabel = "$t$"
-            label = "${0}_{{{1}}}$".format(*key.split("_"))
+            label = format_plot_variable(key)
         else:
             ax = o_ax
             ylabel = r"$f\left(\mathbf{x}\right)$"
@@ -1594,6 +1787,11 @@ def plot_wbox_optimization_history(
     plt.xlabel("Design Evaluation")
     fig.align_ylabels((x_ax, t_ax, o_ax))
     return fig, (x_ax, t_ax)
+
+
+def format_plot_variable(variable: str) -> str:
+    """Formats an ``variable`` with a single underscore."""
+    return "${0}_{{{1}}}$".format(*variable.split("_"))
 
 
 def savefig(fig: matplotlib.figure.Figure, filename: str, **savefig_kwargs):
@@ -1615,10 +1813,7 @@ if __name__ == "__main__":
     print("Flutter Velocity:\n", aero_model.flutter_speed)
     aero_model.simulate(5, np.linspace(0, 10, 1000))
 
-    # Task 14 ---------------------------------------------------------- # noqa
-    # TODO Add sensitivty analysis barchart on structural parameters to
-    # flutter
-    # TODO add sensitivty of wingbox parameters to structural parameters
+    # Task 14 & 15 ----------------------------------------------------- # noqa
     print("\n Task 14: Understanding Structural Modifications")
     if RUN_OPTIMIZATIONS:
         geometric_opt = GeometricWingBoxOptimization(
@@ -1642,6 +1837,28 @@ if __name__ == "__main__":
         )
     fig, _ = geometric_wbox.plot_centroids()
     savefig(fig, "geometric_wbox_opt_centroids.pdf")
+
+    # Analyzing how wingbox variables affect aeroelastic speeds
+    wbox_sensitivity = WingBoxSensitivityAnalysis(
+        typical_section=torsion_ts, initial_wing_box=geometric_wbox
+    )
+    fig, _ = wbox_sensitivity.plot_sensitivity()
+    savefig(fig, "wingbox_aeroelastic_sensitivity.pdf")
+    wbox_sensitivity.save_sensitivity()
+
+    # Analyzing how typical section variables affect aeroelastic speeds
+    ts_sensitivity = TypicalSectionSensitivityAnalysis(
+        typical_section=torsion_ts
+    )
+    fig, _ = ts_sensitivity.plot_sensitivity()
+    savefig(fig, "typical_section_aeroelastic_sensitivity.pdf")
+    ts_sensitivity.save_sensitivity()
+
+    # Analyzing how wingbox variables affect the typical section
+    wbox_ts_sensitivity = WingBoxTSSensitivityAnalysis(
+        typical_section=torsion_ts, initial_wing_box=geometric_wbox
+    )
+    wbox_ts_sensitivity.save_sensitivity()
 
     # Task 16 ---------------------------------------------------------- # noqa
     print("\n Task 16: Structural Optimization to Match Speeds")
