@@ -1902,88 +1902,236 @@ def savefig(fig: matplotlib.figure.Figure, filename: str, **savefig_kwargs):
 
 if __name__ == "__main__":
     # Main Assignment Script (Runs Deliverables of Task 3-16)
-    RUN_OPTIMIZATIONS = False
+    run_optimizations: bool = False  # Toggles if wingbox optimizations run
+    sim_time = np.linspace(0, 10, 1000)  # Default time range to simulate for
 
+    # Task 3 & 4 ------------------------------------------------------- # noqa
     wing = Wing()
     opt_results = run_ts_optimizations()
-    plot_ts_optimization_results(opt_results)
 
+    # Creating plots for the typical section optimization and saving
+    ts_opt_fig, _ = plot_ts_optimization_results(opt_results)
+    # savefig(ts_opt_fig, "ts_optimization_results.pdf")
+
+    # Storing optimized typical sections to variables to use later
+    heave_ts = opt_results[HeaveTSOptimization]["ts_opt"]
     torsion_ts = opt_results[TorsionTSOptimization]["ts_opt"]
     simultaneous_ts = opt_results[SimultaneousTSOptimization]["ts_opt"]
-    aero_model = UnsteadyAeroelasticModel(simultaneous_ts, velocity=30)
-    print("Divergence Velocity:\n", aero_model.divergence_speed)
-    print("Flutter Velocity:\n", aero_model.flutter_speed)
-    aero_model.simulate(5, np.linspace(0, 10, 1000))
 
-    # # Task 14 & 15 ----------------------------------------------------- # noqa
-    # print("\n Task 14: Understanding Structural Modifications")
-    # if RUN_OPTIMIZATIONS:
-    #     geometric_opt = GeometricWingBoxOptimization(
-    #         typical_section=torsion_ts
-    #     )
-    #     geometric_result = geometric_opt.optimize(display=True)
-    #     print(geometric_result)
-    #     geometric_wbox = geometric_result["wingbox"]
-    #     geometric_opt.save_history()
+    # Task 5, 6, & 7 --------------------------------------------------- # noqa
+    print("\nTask 5, 6, 7: Divergence w/ Steady Aerodynamics")
+    aero_model_h = SteadyAeroelasticModel(heave_ts, velocity=20)
+    aero_model_t = SteadyAeroelasticModel(torsion_ts, velocity=20)
+    aero_model_s = SteadyAeroelasticModel(simultaneous_ts, velocity=20)
 
-    #     # Creating plots of the geometrically optimized wingbox
-    #     fig, _ = plot_wbox_optimization_history(optimizer=geometric_opt)
-    #     savefig(fig, "geometric_wbox_opt_history.pdf")
-    # else:
-    #     geometric_wbox = WingBox(
-    #         x_start=0.23454548804408806,
-    #         x_end=0.6848234941195622,
-    #         t_fs=0.005214486372877884,
-    #         t_rs=0.03970339376830019,
-    #         t_skin=0.009682362298690142,
-    #     )
-    # fig, _ = geometric_wbox.plot_centroids()
-    # savefig(fig, "geometric_wbox_opt_centroids.pdf")
+    print(f"Torsion Divergence Speed: {aero_model_t.divergence_speed} [m/s]")
+    print(f"Heave Divergence Speed: {aero_model_h.divergence_speed} [m/s]")
+    print(f"Simul Divergence Speed: {aero_model_s.divergence_speed} [m/s]")
 
-    # # Analyzing how wingbox variables affect aeroelastic speeds
-    # wbox_sensitivity = WingBoxSensitivityAnalysis(
-    #     typical_section=torsion_ts, initial_wing_box=geometric_wbox
-    # )
-    # fig, _ = wbox_sensitivity.plot_sensitivity()
-    # savefig(fig, "wingbox_aeroelastic_sensitivity.pdf")
-    # wbox_sensitivity.save_sensitivity()
+    # Creating response plots for steady aerodynamic model
+    aero_model_t_div = SteadyAeroelasticModel(
+        torsion_ts, velocity=aero_model_t.divergence_speed
+    )
+    _, (f_s1, _) = aero_model_t.simulate(alpha_0=0.5, time=sim_time)
+    _, (f_s2, _) = aero_model_t_div.simulate(alpha_0=0.5, time=sim_time)
 
-    # # Analyzing how typical section variables affect aeroelastic speeds
-    # ts_sensitivity = TypicalSectionSensitivityAnalysis(
-    #     typical_section=torsion_ts
-    # )
-    # fig, _ = ts_sensitivity.plot_sensitivity()
-    # savefig(fig, "typical_section_aeroelastic_sensitivity.pdf")
-    # ts_sensitivity.save_sensitivity()
+    # Saving steady aerodynamic model simulation plots
+    savefig(f_s1, "s_simulation_20.pdf")
+    savefig(f_s2, "s_simulation_divergence.pdf")
 
-    # # Analyzing how wingbox variables affect the typical section
-    # wbox_ts_sensitivity = WingBoxTSSensitivityAnalysis(
-    #     typical_section=torsion_ts, initial_wing_box=geometric_wbox
-    # )
-    # wbox_ts_sensitivity.save_sensitivity()
+    # Task 8, 9, & 10 -------------------------------------------------- # noqa
+    print("\nTask 8, 9, 10: Flutter w/ Quasi-Steady Aerodynamics")
 
-    # # Task 16 ---------------------------------------------------------- # noqa
-    # print("\n Task 16: Structural Optimization to Match Speeds")
-    # aeroelastic_opt = AeroelasticWingBoxOptimization(
-    #     typical_section=torsion_ts, initial_wing_box=geometric_wbox
-    # )
-    # if RUN_OPTIMIZATIONS:
-    #     aeroelastic_result = aeroelastic_opt.optimize(display=True)
-    #     print(aeroelastic_result)
-    #     aeroelastic_wbox = aeroelastic_result["wingbox"]
-    #     aeroelastic_opt.save_history()
+    # Theodorsen quasi-steady model
+    aero_model = TheodorsenQuasiSteadyAeroelasticModel(torsion_ts)
 
-    #     # Creating plots of the aeroelastically optimized wingbox
-    #     fig, _ = plot_wbox_optimization_history(optimizer=aeroelastic_opt)
-    #     savefig(fig, "aeroelastic_wbox_opt_history.pdf")
-    # else:
-    #     aeroelastic_wbox = WingBox(
-    #         x_start=0.2172114623883768,
-    #         x_end=0.55,
-    #         t_fs=0.008458459838219579,
-    #         t_rs=0.041504879385093146,
-    #         t_skin=0.01688176404495601,
-    #     )
+    print("Theodorsen QS Model:")
+    print(f"Divergence Speed: {aero_model.divergence_speed} [m/s]")
+    print(f"Flutter Speed: {aero_model.flutter_speed} [m/s]")
+    print(f"Flutter Frequency: {aero_model.flutter_frequency} [rad/s]")
+    print(f"Reduced Flutter Frequency: {aero_model.reduced_flutter_frequency}")
 
-    # fig, _ = aeroelastic_wbox.plot_centroids()
-    # savefig(fig, "aeroelastic_wbox_opt_centroids.pdf")
+    # Creating and saving plots for theodorsen aerodynamic model
+    f_freq, _ = aero_model.plot_frequency_diagram()
+    f_damp, _ = aero_model.plot_damping_diagram()
+    f_damp_ratio, _ = aero_model.plot_damping_ratio_diagram()
+
+    savefig(f_freq, "qs_theo_frequency_diagram.pdf")
+    savefig(f_damp, "qs_theo_damping_diagram.pdf")
+    savefig(f_damp_ratio, "qs_theo_damping_ratio_diagram.pdf")
+
+    # Low Speed Response
+    aero_model = TheodorsenQuasiSteadyAeroelasticModel(torsion_ts, velocity=5)
+    _, (f_low, _) = aero_model.simulate(alpha_0=0.5, time=sim_time)
+    savefig(f_low, "qs_theo_simulation_5.pdf")
+
+    # Response of model to flutter
+    aero_model = TheodorsenQuasiSteadyAeroelasticModel(
+        torsion_ts, velocity=aero_model.flutter_speed
+    )
+    _, (f_flutter, _) = aero_model.simulate(alpha_0=0.5, time=sim_time)
+    savefig(f_flutter, "qs_theo_simulation_flutter.pdf")
+
+    # Response of model to divergence
+    aero_model = TheodorsenQuasiSteadyAeroelasticModel(
+        torsion_ts, velocity=aero_model.divergence_speed
+    )
+    _, (f_div, _) = aero_model.simulate(alpha_0=0.5, time=sim_time[0:200])
+    savefig(f_div, "qs_theo_simulation_divergence.pdf")
+
+    # Liege quasi-steady model
+    aero_model = LiegeQuasiSteadyAeroelasticModel(torsion_ts)
+    print("\nLiege QS Model:")
+    print(f"Divergence Speed: {aero_model.divergence_speed} [m/s]")
+    print(f"Flutter Speed: {aero_model.flutter_speed} [m/s]")
+    print(f"Flutter Frequency: {aero_model.flutter_frequency} [rad/s]")
+    print(f"Reduced Flutter Frequency: {aero_model.reduced_flutter_frequency}")
+
+    # Creating and saving plots for liege aerodynamic model
+    f_freq, _ = aero_model.plot_frequency_diagram()
+    f_damp, _ = aero_model.plot_damping_diagram()
+    f_damp_ratio, _ = aero_model.plot_damping_ratio_diagram()
+
+    savefig(f_freq, "qs_liege_frequency_diagram.pdf")
+    savefig(f_damp, "qs_liege_damping_diagram.pdf")
+    savefig(f_damp_ratio, "qs_liege_damping_ratio_diagram.pdf")
+
+    # Response of model to flutter
+    aero_model = LiegeQuasiSteadyAeroelasticModel(
+        torsion_ts, velocity=aero_model.flutter_speed
+    )
+    _, (f_flutter, _) = aero_model.simulate(alpha_0=0.5, time=sim_time)
+    savefig(f_flutter, "qs_liege_simulation_flutter.pdf")
+
+    # Response of model to velocity after flutter
+    aero_model = LiegeQuasiSteadyAeroelasticModel(torsion_ts, velocity=27)
+    _, (f_flutter, _) = aero_model.simulate(alpha_0=0.5, time=sim_time)
+    savefig(f_flutter, "qs_liege_simulation_27.pdf")
+
+    # Response of model to divergence
+    aero_model = LiegeQuasiSteadyAeroelasticModel(
+        torsion_ts, velocity=aero_model.divergence_speed
+    )
+    _, (f_div, _) = aero_model.simulate(alpha_0=0.5, time=sim_time[0:200])
+    savefig(f_div, "qs_liege_simulation_divergence.pdf")
+
+    # Task 11, 12, & 13 ------------------------------------------------ # noqa
+    aero_model = UnsteadyAeroelasticModel(simultaneous_ts)
+    print("\nUnsteady Model w/ Simultaneous TS:")
+    print(f"Divergence Speed: {aero_model.divergence_speed} [m/s]")
+    print(f"Flutter Speed: {aero_model.flutter_speed} [m/s]")
+    print(f"Flutter Frequency: {aero_model.flutter_frequency} [rad/s]")
+    print(f"Reduced Flutter Frequency: {aero_model.reduced_flutter_frequency}")
+
+    aero_model = UnsteadyAeroelasticModel(torsion_ts)
+    print("\nUnsteady Model:")
+    print(f"Divergence Speed: {aero_model.divergence_speed} [m/s]")
+    print(f"Flutter Speed: {aero_model.flutter_speed} [m/s]")
+    print(f"Flutter Frequency: {aero_model.flutter_frequency} [rad/s]")
+    print(f"Reduced Flutter Frequency: {aero_model.reduced_flutter_frequency}")
+
+    # Creating and saving plots for liege aerodynamic model
+    f_freq, _ = aero_model.plot_frequency_diagram()
+    f_damp, _ = aero_model.plot_damping_diagram()
+    f_damp_ratio, _ = aero_model.plot_damping_ratio_diagram()
+
+    savefig(f_freq, "us_frequency_diagram.pdf")
+    savefig(f_damp, "us_damping_diagram.pdf")
+    savefig(f_damp_ratio, "us_damping_ratio_diagram.pdf")
+
+    # # Low Speed Response
+    aero_model = UnsteadyAeroelasticModel(torsion_ts, velocity=20)
+    _, (f_low, _) = aero_model.simulate(alpha_0=0.5, time=sim_time)
+    savefig(f_low, "us_simulation_20.pdf")
+
+    # Response of model to flutter
+    aero_model = UnsteadyAeroelasticModel(
+        torsion_ts, velocity=aero_model.flutter_speed
+    )
+    _, (f_flutter, _) = aero_model.simulate(alpha_0=0.5, time=sim_time)
+    savefig(f_flutter, "us_simulation_flutter.pdf")
+
+    # Response of model to velocity after flutter
+    aero_model = UnsteadyAeroelasticModel(torsion_ts, velocity=34)
+    _, (f_flutter, _) = aero_model.simulate(alpha_0=0.5, time=sim_time)
+    savefig(f_flutter, "us_simulation_34.pdf")
+
+    # Response of model to divergence
+    aero_model = UnsteadyAeroelasticModel(
+        torsion_ts, velocity=aero_model.divergence_speed
+    )
+    _, (f_div, _) = aero_model.simulate(alpha_0=0.5, time=sim_time[0:200])
+    savefig(f_div, "us_simulation_divergence.pdf")
+
+    # Task 14 & 15 ----------------------------------------------------- # noqa
+    print("\n Task 14 & 15: Understanding Structural Modifications")
+    if run_optimizations:
+        geometric_opt = GeometricWingBoxOptimization(
+            typical_section=torsion_ts
+        )
+        geometric_result = geometric_opt.optimize(display=True)
+        print(geometric_result)
+        geometric_wbox = geometric_result["wingbox"]
+        geometric_opt.save_history()
+
+        # Creating plots of the geometrically optimized wingbox
+        fig, _ = plot_wbox_optimization_history(optimizer=geometric_opt)
+        savefig(fig, "geometric_wbox_opt_history.pdf")
+    else:
+        geometric_wbox = WingBox(
+            x_start=0.23454548804408806,
+            x_end=0.6848234941195622,
+            t_fs=0.005214486372877884,
+            t_rs=0.03970339376830019,
+            t_skin=0.009682362298690142,
+        )
+    fig, _ = geometric_wbox.plot_centroids()
+    savefig(fig, "geometric_wbox_opt_centroids.pdf")
+
+    # Analyzing how wingbox variables affect aeroelastic speeds
+    wbox_sensitivity = WingBoxSensitivityAnalysis(
+        typical_section=torsion_ts, initial_wing_box=geometric_wbox
+    )
+    fig, _ = wbox_sensitivity.plot_sensitivity()
+    savefig(fig, "wingbox_aeroelastic_sensitivity.pdf")
+    wbox_sensitivity.save_sensitivity()
+
+    # Analyzing how typical section variables affect aeroelastic speeds
+    ts_sensitivity = TypicalSectionSensitivityAnalysis(
+        typical_section=torsion_ts
+    )
+    fig, _ = ts_sensitivity.plot_sensitivity()
+    savefig(fig, "typical_section_aeroelastic_sensitivity.pdf")
+    ts_sensitivity.save_sensitivity()
+
+    # Analyzing how wingbox variables affect the typical section
+    wbox_ts_sensitivity = WingBoxTSSensitivityAnalysis(
+        typical_section=torsion_ts, initial_wing_box=geometric_wbox
+    )
+    wbox_ts_sensitivity.save_sensitivity()
+
+    # Task 16 ---------------------------------------------------------- # noqa
+    print("\n Task 16: Structural Optimization to Match Speeds")
+    aeroelastic_opt = AeroelasticWingBoxOptimization(
+        typical_section=torsion_ts, initial_wing_box=geometric_wbox
+    )
+    if run_optimizations:
+        aeroelastic_result = aeroelastic_opt.optimize(display=True)
+        print(aeroelastic_result)
+        aeroelastic_wbox = aeroelastic_result["wingbox"]
+        aeroelastic_opt.save_history()
+
+        # Creating plots of the aeroelastically optimized wingbox
+        fig, _ = plot_wbox_optimization_history(optimizer=aeroelastic_opt)
+        savefig(fig, "aeroelastic_wbox_opt_history.pdf")
+    else:
+        aeroelastic_wbox = WingBox(
+            x_start=0.2172114623883768,
+            x_end=0.55,
+            t_fs=0.008458459838219579,
+            t_rs=0.041504879385093146,
+            t_skin=0.01688176404495601,
+        )
+
+    fig, _ = aeroelastic_wbox.plot_centroids()
+    savefig(fig, "aeroelastic_wbox_opt_centroids.pdf")
