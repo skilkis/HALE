@@ -147,7 +147,7 @@ class TypicalSection(Wing):
         return self.chord / 2
 
     @cached_property
-    def x_theta(self):
+    def centroid_offset(self):
         """Norm. distance from the elastic axis to center of gravity.
 
         Note:
@@ -168,9 +168,9 @@ class TypicalSection(Wing):
             y-axis is coincident with the elastic axis.
         """
         i_theta_star = self.airfoil_inertia
-        x_theta = self.x_theta
+        d = self.centroid_offset
         b = self.half_chord
-        return i_theta_star + self.airfoil_mass * (x_theta * b) ** 2
+        return i_theta_star + self.airfoil_mass * (d * b) ** 2
 
     @cached_property
     def lift_moment_arm(self):
@@ -217,9 +217,12 @@ class StructuralModel:
             [
                 [
                     ts.airfoil_mass,
-                    ts.airfoil_mass * ts.x_theta * ts.half_chord,
+                    ts.airfoil_mass * ts.centroid_offset * ts.half_chord,
                 ],
-                [ts.airfoil_mass * ts.x_theta * ts.half_chord, ts.i_theta],
+                [
+                    ts.airfoil_mass * ts.centroid_offset * ts.half_chord,
+                    ts.i_theta,
+                ],
             ]
         )
 
