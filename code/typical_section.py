@@ -2114,7 +2114,7 @@ if __name__ == "__main__":
     wbox_ts_sensitivity.save_sensitivity()
 
     # Task 16 ---------------------------------------------------------- # noqa
-    print("\n Task 16: Structural Optimization to Match Speeds")
+    print("\nTask 16: Structural Optimization to Match Speeds")
     aeroelastic_opt = AeroelasticWingBoxOptimization(
         typical_section=torsion_ts, initial_wing_box=geometric_wbox
     )
@@ -2138,3 +2138,9 @@ if __name__ == "__main__":
 
     fig, _ = aeroelastic_wbox.plot_centroids()
     savefig(fig, "aeroelastic_wbox_opt_centroids.pdf")
+
+    # Flutter and Divergence Speed of aeroelastically aptimiozed wingbox
+    ts_wbox = aeroelastic_opt.get_typical_section(aeroelastic_wbox)
+    aero_model = UnsteadyAeroelasticModel(ts_wbox)
+    print(f"Divergence Speed: {aero_model.divergence_speed} [m/s]")
+    print(f"Flutter Speed: {aero_model.flutter_speed} [m/s]")
