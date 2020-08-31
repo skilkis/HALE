@@ -250,7 +250,7 @@ class StructuralModel:
 
     @cached_property
     def unit_torsion_stiffness(self):
-        """Torsion striffness per unit span in SI Newton meter."""
+        """Torsion striffness per unit span in SI Newton."""
         ts = self.typical_section
         GJ = ts.torsional_rigidity / ts.y_ts
         return GJ / (ts.y_ts)
