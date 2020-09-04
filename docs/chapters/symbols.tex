@@ -1,14 +1,14 @@
 % Abbreviations
 \nomenclature[A]{CG}{Center of Gravity}
 \nomenclature[A]{AC}{Aerodynamic Center}
+\nomenclature[A]{RSS}{Residual Sum of Squares}
 
 % Latin Symbols
 \nomenclature[B]{$t$}{Normalized Thickness \nomunit{-}}
 \nomenclature[B]{$t^*$}{Reduced Time \nomunit{-}}
 \nomenclature[B]{$c$}{Airfoil Chord Length \nomunit{\meter}}
 \nomenclature[B]{$b$}{Aifoil Half-Chord Length \nomunit{\meter}}
-\nomenclature[B]{$y_{ts}$}{Spanwise Location of Typical Section \nomunit{\meter}}
-% TODO figure out if Lift is actually in Newtons
+\nomenclature[B]{$y_{ts}$}{Spanwise Location of the Typical Section \nomunit{\meter}}
 \nomenclature[B]{$L$}{Lift Force \nomunit{\newton}}
 \nomenclature[B]{$M$}{Aerodynamic Moment \nomunit{\newton\meter}}
 \nomenclature[B]{$h$}{Heave Displacement \nomunit{\meter}}
@@ -21,13 +21,39 @@
 \nomenclature[B]{$d$}{Half-Chord Normalized Offset of Center of Gravity from the Elastic Axis\nomunit{-}}
 \nomenclature[B]{$U$}{Flight Velocity \nomunit{\meter\per\second}}
 \nomenclature[B]{$C\left(k\right)$}{Theodorsen Function \nomunit{-}}
-\nomenclature[B]{$k$}{Reduced Frequency \nomunit{\radian}} % TODO check if this is correct
+\nomenclature[B]{$k$}{Reduced Frequency \nomunit{\radian}}
+\nomenclature[B]{$C_L$}{Lift Coefficient \nomunit{-}}
+\nomenclature[B]{$C_{L_\alpha}$}{Lift Gradient \nomunit{-}}
+\nomenclature[B]{$C_{m}$}{Moment Coefficient \nomunit{-}}
+\nomenclature[B]{$m_a$}{Airfoil Mass \nomunit{\kilogram\per\meter}}
+\nomenclature[B]{$I_\theta$}{Unit Polar Mass Moment of Inertia \nomunit{\kilogram\meter}}
+\nomenclature[B]{$I_\theta^*$}{Unit Polar Mass Moment of Inertia at CG \nomunit{\kilogram\meter}}
+\nomenclature[B]{$I$}{Bending Area Moment of Inertia \nomunit{\meter\tothe{4}}}
+\nomenclature[B]{$J$}{Torsional Constant \nomunit{\meter\tothe{4}}}
+\nomenclature[B]{$E$}{Modulus of Elasticity \nomunit{\newton\per\meter\squared}}
+\nomenclature[B]{$G$}{Modulus of Rigidity \nomunit{\newton\per\meter\squared}}
+\nomenclature[B]{$\bm{M}$}{Mass Matrix \nomunit{-}}
+\nomenclature[B]{$\bm{C}$}{Damping Matrix \nomunit{-}}
+\nomenclature[B]{$\bm{K}$}{Stiffness Matrix \nomunit{-}}
+\nomenclature[B]{$\bm{x}$}{Degree of Freedom Vector \nomunit{-}}
+\nomenclature[B]{$\bm{\hat{x}}$}{Eigen Vector \nomunit{-}}
+\nomenclature[B]{$q$}{Dynamic Pressure \nomunit{\newton\per\meter\squared}}
+\nomenclature[B]{$K_h$}{Unit Bending Stiffness \nomunit{\newton\per\meter\squared}}
+\nomenclature[B]{$K_\theta$}{Unit Torsional Stiffness \nomunit{\newton}}
 
 % Greek Symbols
 \nomenclature[G]{$\eta_{ts}$}{Span Normalized Spanwise Location of Typical Section \nomunit{-}}
 \nomenclature[G]{$\alpha$}{Angle of Attack \nomunit{\radian}}
+\nomenclature[G]{$\alpha_0$}{Rigid Angle of Attack \nomunit{\radian}}
 \nomenclature[G]{$\alpha_i$}{Induced Angle of Attack \nomunit{\radian}}
 \nomenclature[G]{$\omega$}{Frequency \nomunit{\radian\per\second}}
+\nomenclature[G]{$\bm{\lambda}$}{Eigen Values \nomunit{-}}
 
 \nomenclature[S]{$f$}{Flutter Quantity}
 \nomenclature[S]{$d$}{Divergence Quantity}
+\nomenclature[S]{$skin$}{Wingbox Skin Quantity}
+\nomenclature[S]{$fs$}{Front Spar Quantity}
+\nomenclature[S]{$rs$}{Rear Spar Quantity}
+\nomenclature[S]{$\bm{ae}$}{Aeroelastic Matrix}
+\nomenclature[S]{$\bm{a}$}{Aerodynamic Matrix}
+\nomenclature[S]{$\bm{s}$}{Structural Matrix}
