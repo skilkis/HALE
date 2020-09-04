@@ -1,92 +1,1269 @@
-\chapter{Assignment}
-
-
-% TODO talk about how there are 2 version of the quasi-steady Aerodynamic model
-% from A modern course in Aeroelasticity
-
-% TODO talk about how Quasi-steady assumption yields a flutter speed value that
-% is approximitely 40% lower than the fully unsteady case! (Blisplinghoff)
-
-% TODO use the k (reduced frequency) value to justify the use of an unsteady
-% model (Intro to aeroelasticity and loads)
-
-% TODO Talk about what is circulatory and non-circulatory lift (Intro to
-% Aeroelasticity and loads)
-
-% TODO derive the quasi-steady Aerodynamics from Theodorsen (Intro to
-% aeroelasticity and loads)
-
-% TODO explain how the presence of the moment coefficient adds a damping
-% term in the Liege derivation (Lecture 1 slide 28) This somehow stabilizes the
-% system
-
-% TODO Quasi-steady aerodynamics leads to significant modelling errors
-
-% TODO explain why the exact values from Reference 15 were used!
-
-% TODO Use the damping ratio plot for verification of flutter speed with Liege
-% Lecture 2
-
-% Quasi-steady Game Plan:
-% 1. Derive model from Theodorsen -> Show fucked up results
-% 2. Explain how there is a discrepency in the results and the inclusion of
-% a pitch damping term has significant effect on the result
-% 3. Show the Liege EoM which has a damping term due to the moment coefficient
-% 4. In the end, both models have modelling errors -> Use of a Unsteady model
-% is justified
+\chapter{Assignment Deliverables}
+As requested this sole chapter contains the main assignment deliverables
+organized such that each section number pertains to the numbering of the tasks.
 
 \section{Typical Section Modelling}
+The typical section is a two degree of freedom idealization of a wing, that can
+represent the response of the wing in both heave, $h$, and pitch $\theta$.
+These degrees of freedom are illustrated below by
+\cref{fig:typical_section_convention}. This assignment applies typical section
+modelling to the HALE UAV wing with parameters given by \cref{tab:wing_params}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/sign_convention.pdf}
+    \caption{Typical Section Dimensions and Sign Convention}
+    \label{fig:typical_section_convention}
+\end{figure}
+
+\begin{table}[H]
+    \centering
+    \caption{HALE UAV Wing and Typical Section Parameters \autocite[p.89]{Patil2008}}
+    \label{tab:wing_params}
+    \begin{tabularx}{\textwidth}{p{0.35\textwidth} C C C} %'L' for Left Aligned, 'C' for Centered, 'R' for Right Aligned
+    \toprule
+    \textbf{Parameter} & \textbf{Symbol} &\textbf{Value} & \textbf{Units} \\
+    \midrule
+    Half Span & $b$ & 16 & \si{\meter} \\
+    Chord & $c$ & 1 & \si{\meter} \\
+    Lift Gradient & $C_{l_\alpha}$ & $2\pi$ & \si{\per\radian}\\
+    Airfoil Mass & $m_a$ & 0.75 & \si{\kilogram\per\meter} \\
+    Polar Mass Moment of Inertia & $I_\theta^*$ & 0.1 & \si{\kilogram\meter} \\
+    Elastic Axis Location & $x_a$ & 0.5 & - \\
+    Center of Gravity & $x_{cg}$ & 0.5 & - \\
+    Bending Rigidity  & $EI$ & 20000 & \si{\newton\meter\squared} \\
+    Torsional Rigidity  & $GJ$ & 10000 & \si{\newton\meter\squared} \\
+    \bottomrule
+    \end{tabularx}
+\end{table}
+
+In essence, this approximation structurally reduces the wing to a cantilevered
+beam up until the span-wise position of the typical section, whose properties
+are then represented per unit of span. Therefore, since the HALE UAV wing is
+rectangular, it is structurally an ideal candidate for modelling with the
+typical section. This is because, cross-sectional properties of the wing do not
+vary in span, such that they can be represented accurately on a per span basis
+without errors.\\
+
+From an aerodynamic point of view, the high-aspect ratio HALE UAV wing is an
+ideal candidate to be modelled with the typical section due to the reduced
+influence of 3D effects and tip-vortices. This makes it possible to apply the
+unsteady 2D aerodynamic model formulation of Theodore Theodorsen
+\autocite{ReportNo4961935}.
 
 \section{Spanwise Location Selection}
+The location of the typical section must be selected such that it is coincident
+with the \textbf{highest loaded section} which occurs at roughly three-quarters
+of the half-span \autocite[p.533]{bisplinghoffAeroelasticity1996}.
 
 \section{Tuning of Location Based on Frequency}
+\label{sec:tuning}
+Even though the typical section generally produces the best results when
+placed at three-quarters of the half-span, finding the precise location that
+produces the absolute best result requires tuning location based on
+the obtained natural frequencies. This section will discuss the structural
+modelling and subsequent optimization problem that can be used to locate
+the ideal placement of the typical section.
 
 \subsection{Structural Model}
+The structural model of the typical section can be derived by using Newtons
+second law, and taking the sum force and moments separately in the heave and
+pitch degrees of freedom respectively. These are then equated to the freedom
+and equating it to the time rate of change of the linear and angular momentum.
+Completing this process results in a typical mass spring system with no damping
+as linear-structures is assumed, \cref{eq:struct_model}.
 
-\subsection{Optimization Problem Definition}
+\begin{equation}
+    \label{eq:struct_model}
+    \underbrace{\begin{bmatrix}
+        m_a & db \\
+        db & I_\theta^* + m_a\left(db\right)^2
+    \end{bmatrix}}_{\bm{M_s}}
+    \begin{bmatrix}
+        \ddot{h} \\ \ddot{\theta}
+    \end{bmatrix} +
+    \underbrace{\begin{bmatrix}
+        K_h & 0 \\
+        0 & K_\theta
+    \end{bmatrix}}_{\bm{K_s}}
+    \begin{bmatrix}
+        h \\ \theta
+    \end{bmatrix} =
+    \begin{bmatrix}
+        L \\ M
+    \end{bmatrix}
+\end{equation}
+
+Note that the lower-right term of the structural mass matrix, $M_s$, represents
+the polar mass moment of inertia of the airfoil moved to the elastic axis. This
+is why a Steiner term is used to shift the polar mass moment of inertia about
+the center of gravity, $I_\theta^*$.\\
+
+Furthermore, the unit bending and torsional stiffness, $K_h$ and $K_\theta$,
+can be calculated using \cref{eq:bending_stiffness,eq:torsion_stiffness}
+respectively. These are obtained by realizing that a stiffness is the force
+generated per displacement of a degree of freedom. Thus, they are re-formulated
+from the the generalized beam deflection and angle of twist equations
+\autocite[p.865]{hibbelerMechanicsMaterials2011}.\\
+
+Finally, it is important to note that since the typical section modelling
+requires quantities expressed on a per unit span basis, these have been divided
+by the spanwise position of the typical section. Essentially, this represents
+the cantilever beam terminating at the spanwise position of the typical
+section, $y_{ts}$, as comprised of an infinite number of sections.
+
+\begin{equation}
+    \label{eq:bending_stiffness}
+    K_h = \frac{3EI}{L^3 y_{ts}} = \frac{3EI}{y_{ts}^4}
+\end{equation}
+
+\begin{equation}
+    \label{eq:torsion_stiffness}
+    K_\theta = \frac{GJ}{L y_{ts}} = \frac{GJ}{y_{ts}^2}
+\end{equation}
+
+\subsection{Determining Natural Frequencies}
+Due to the fact that the typical section of the HALE UAV has a center of
+gravity that is coincident with the elastic axis, the coupled natural
+frequencies are equivalent to the uncoupled natural frequencies. However, it is
+desirable to derive a general solution that can also obtain the natural
+frequencies of a typical section when this is not the case. The first step in
+this process is to set the external aerodynamic forces to zero as the natural
+frequencies of the system are those without the presence of external forces
+\cref{eq:ext_equal_zero}. As a side note, this is why when doing
+Ground-Vibration Tests (GVT) getting the true natural frequencies are so
+difficult as the mass of the air causes a slight shift of these frequencies.
+
+\begin{equation}
+    \label{eq:ext_equal_zero}
+    \bm{M_s\ddot{x}} + \bm{K_s x} = 0
+\end{equation}
+
+This equation can be re-arranged to isolate the acceleration terms as given
+below by \cref{eq:isolate_accel}.
+
+\begin{equation}
+    \label{eq:isolate_accel}
+    \bm{M_s^{-1} K_s x} = -\bm{\ddot{x}}
+\end{equation}
+
+Next, we can assume a purely harmonic solution of the form
+$\bm{x} = \bm{\hat{x}}e^{-i \omega t}$ and differentiate it twice to obtain
+\cref{eq:double_diff}. The assumed solution can then be substituted into
+\cref{eq:double_diff} to obtain \cref{eq:accel_frequency}.
+
+\begin{equation}
+    \label{eq:double_diff}
+    \bm{\ddot{x}} = -\bm{\omega^2\hat{x}}e^{-i \bm{\omega} t}
+\end{equation}
+
+\begin{equation}
+    \label{eq:accel_frequency}
+    \bm{\ddot{x}} = -\bm{\omega^2 x}
+\end{equation}
+
+Substituting \cref{eq:accel_frequency} into \cref{eq:isolate_accel}
+\cref{eq:freq_eig} is obtained which can be seen as an eigen value problem
+\cref{eq:eig}. Hence the coupled natural frequencies of the system
+$\bm{\omega_n} = \left[w_{n_b}, w_{n_t}\right]^T$.
+
+\begin{equation}
+    \label{eq:freq_eig}
+    \bm{M_s^{-1} K_s \hat{x}} = \bm{\omega_n^2\hat{x}}
+\end{equation}
+
+\begin{equation}
+    \label{eq:eig}
+    \bm{A\hat{x}} = \bm{\lambda \hat{x}}
+\end{equation}
+
+\subsection{Optimized Location of the Typical Section}
+Now that a method for determining the natural frequencies in heave and torsion
+has been established, the location of the typical section can be tuned using a
+numerical optimizer. The aim of the optimizer is to minimize the Residual Sum
+of Squares (RSS) between the calculated natural frequency and the exact values
+from \autocite{howcroftEfficientAeroelasticBeam2019}. As divergence is dictated
+by torsion, the preference is to prioritize a more accurate torsional natural
+frequency. However, to verify if this preference is correct three optimization
+problems have been defined \cref{eq:h_opt,eq:t_opt,eq:s_opt}, corresponding to
+matching the heave, torsion, or both frequencies simultaneously.
+
+\begin{align}
+    \text{Minimize:} \hspace{2em}
+        f_{h}\left(\eta_{ts}\right) &=
+        \left(\omega_{n_{h,ts}} - \omega_{n_{h,exact}}\right)^2
+        \label{eq:h_opt}\\[1em]
+    \text{Minimize:} \hspace{2em}
+        f_{h}\left(\eta_{ts}\right) &=
+        \left(\omega_{n_{t,ts}} - \omega_{n_{t,exact}}\right)^2
+        \label{eq:t_opt}\\[1em]
+    \text{Minimize:} \hspace{2em}
+        f_{h}\left(\eta_{ts}\right) &=
+        \left(\omega_{n_{h,ts}} - \omega_{n_{h,exact}}\right)^2 +
+        \left(\omega_{n_{t,ts}} - \omega_{n_{t,exact}}\right)^2
+        \label{eq:s_opt}\\[1em]
+    \text{Where:} \hspace{2em} 0 < \eta_{ts} &\leq 1
+\end{align}
+
+The result of the torsional frequency optimization, which places a typical
+section at $\boxed{y_{ts} = \SI{10.19}{\meter}}$ using \cref{eq:t_opt} is given
+below by \cref{tab:torsion_frequencies}. Here, it can be seen that the
+torsional frequency is matched exactly.
+
+\begin{table}[H]
+    \centering
+    \caption{Result of Torsional Frequency Optimization, $y_{ts} =
+    \SI{10.19}{\meter}$}
+    \label{tab:torsion_frequencies}
+    \begin{tabularx}{\textwidth}{p{0.3\textwidth}P{0.095\textwidth}CCC}
+    \toprule
+    \textbf{Parameter} & \textbf{Symbol} &\textbf{Present Value}
+    &\textbf{Ref. Value \autocite{howcroftEfficientAeroelasticBeam2019}}
+    & \textbf{Difference} \\
+    \midrule
+    Torsional Frequency \si{\radian\per\second}
+    & $\omega_{n_t}$ & 31.046 & 31.046 & \SI{0.00}{\percent}\\
+    Bending Frequency \si{\radian\per\second}
+    & $\omega_{n_b}$ & 2.726 & 2.243 & \SI{21.53}{\percent}\\ \bottomrule
+    \end{tabularx}
+\end{table}
 
 \section{Matching Torsional and Bending Frequencies}
+The result of the optimization problems defined previously, visually depcited
+by \cref{fig:ts_optimization}, clearly show that it is \textbf{not possible to
+match both the torsion and bending natural frequencies} concurrently. This is
+because the ideal location of the torsion and heave optimized typical sections
+is not coincident. Since both flutter and divergence are more heavily
+influenced by the pitch angle, it would reason that selecting the torsionally
+optimized typical section location would produce better results. However, one
+can also reason that since both bending and heave play a role in the precise
+flutter speed calculation, the simultaneously optimized typical section would
+produce the most accurate result. Having run the unsteady aerodynamic model for
+the latter typical section, it was indeed shown to produce a more accurate
+result.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.8\textwidth]{figures/ts_optimization_results.pdf}
+    \caption{Squared Residual of Typical Section Optimization Problems}
+    \label{fig:ts_optimization}
+\end{figure}
+
+\begin{table}[H]
+    \centering
+    \caption{Typical Section Optimization Results}
+    \label{tab:ts_opt_residuals}
+    \begin{tabularx}{\textwidth}{p{0.3\textwidth}CCC}
+    \toprule
+    \textbf{Optimization Target} & $\bm{y_{ts}}$ & $\bm{\eta_{ts}}$ & \textbf{RSS} \\
+    \midrule
+    Bending Frequency & 11.2294 & 0.7018 & 9.8687e-18 \\
+    Torsion Frequency & 10.1858 & 0.6366 & 5.8939e-14 \\
+    Both Frequencies & 10.2128 & 0.6383 & 2.2651e-01 \\ \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Result of Simultaneous Frequency Optimization, $y_{ts} =
+    \SI{10.21}{\meter}$}
+    \label{tab:matched_frequencies}
+    \begin{tabularx}{\textwidth}{p{0.3\textwidth}P{0.095\textwidth}CCC}
+    \toprule
+    \textbf{Parameter} & \textbf{Symbol} &\textbf{Present Value}
+    &\textbf{Ref. Value \autocite{howcroftEfficientAeroelasticBeam2019}}
+    & \textbf{Difference} \\
+    \midrule
+    Torsional Frequency \si{\radian\per\second}
+    & $\omega_{n_t}$ & 30.963 & 31.046 & \SI{0.27}{\percent}\\
+    Bending Frequency \si{\radian\per\second}
+    & $\omega_{n_b}$ & 2.711 & 2.243 & \SI{20.86}{\percent}\\ \bottomrule
+    \end{tabularx}
+\end{table}
+
 
 \section{Steady Divergence Speed}
 
+
 \subsection{Aerodynamic Model}
+Looking at \cref{fig:typical_section_convention} one can see that the only
+external force is the lift, $L$. The lift force along with the aerodynamic
+moment it causes around the elastic axis, $M$, can be expressed by
+\cref{eq:steady_lift,eq:steady_moment} after recognizing that the angle of
+attack $\alpha$ is comprised of both a rigid, $\alpha_0$, and flexible
+pitch angle, $\theta$, angle \cref{eq:aeroelastic_aoa}.
 
-\subsection{Divergence Speed Calculation}
+\begin{equation}
+    \label{eq:aeroelastic_aoa}
+    \alpha = \alpha_0 + \theta
+\end{equation}
 
-\section{Structural Model Verification}
+\begin{equation}
+    \label{eq:steady_lift}
+    L = -qSC_{L_\alpha}\left(\alpha_0 + \theta)\right)
+\end{equation}
+
+\begin{equation}
+    \label{eq:steady_moment}
+    M = qSC_{L_\alpha}\left(\alpha_0 + \theta)\right)\cdot
+    \left(\frac{1}{2} + a \right)b + M_{ac}
+\end{equation}
+
+Assuming that the airfoil is symmetric and thin, the aerodynamic moment at the
+aerodynamic center, $M_{ac}$ can be assumed to be equal to zero
+\autocite[p.5]{kelleyThinAirfoilTheory2016}. This leaves us with the following
+matrix formulation of the aerodynamic model given by \cref{eq:steady_aero}.
+
+\begin{equation}
+    \label{eq:steady_aero}
+    \begin{bmatrix}
+        L \\ M
+    \end{bmatrix} =
+    q\underbrace{\begin{bmatrix}
+        0 & -S C_{L_\alpha} \\
+        0 & S C_{L_\alpha}\left(0.5 + a\right)b
+    \end{bmatrix}}_{\bm{K_a}}
+    \begin{bmatrix}
+        h \\ \theta
+    \end{bmatrix} +
+    \underbrace{\begin{bmatrix}
+        -qS C_{L_\alpha} \\
+        qS C_{L_\alpha}\left(0.5 + a\right)b
+    \end{bmatrix}}_{\bm{B}} \alpha_0
+\end{equation}
+
+Note that in \cref{eq:steady_aero} the final rigid angle of attack term,
+$\alpha_0$, can be neglected for stability analysis, but is important to keep
+for system response simulation as the input matrix, $\bm{B}$, which will be
+discussed later.
+% TODO reference state-space formulation section
+
+\subsection{Torsional Divergence Speed Calculation}
+The name torsional divergence stems from the fact that the divergence phenomena
+is influenced only by the pitch degree of freedom. The reason behind this is
+that as divergence is a static aeroelastic phenomena, then the lift and moment
+on an airfoil is only dependent on the total angle of attack. In other words,
+without 3D aerodynamic effects and neglecting changes in density, it does not
+matter if the airfoil is 5 or \SI{10}{\meter} above the ground. As such, this
+difference in heave displacement does not affect the aerodynamic loads.\\
+
+In order to calculate exact dynamic pressure at which torsional divergence
+occurs must then examine the point where the structural stiffness is overcome
+by the aerodynamic forces. As the aerodynamic forces increase with an increase
+in dynamic pressure, the effective stiffness of the aeroelastic system
+reduces with air speed. Furthermore, knowing that negative stiffnesses result
+in an unstable structure, the stability boundary is the point where the
+aeroelastic stiffness, \cref{eq:aeroleastic_stiffness}, is zero. Thus, any
+increase in dynamic pressure beyond this boundary causes the heave and
+pitch deflections of the structure to be unbounded
+\autocite[p.26]{hulshoffAE4930AeroelasticityCourse2011}.
+
+\begin{equation}
+    \label{eq:aeroleastic_stiffness}
+    \bm{K_{ae}} = \left(\bm{K_{s}} - q \bm{K_a}\right)
+\end{equation}
+
+\cref{eq:aeroleastic_stiffness} above can then be reformulated as a generalized
+eigen value problem
+\cref{eq:gevp} \autocite[p.652]{zienkiewiczFiniteElementMethod2013}, and then
+takes the form given by \cref{eq:q_evp}.
+
+\begin{equation}
+    \label{eq:gevp}
+    \bm{A}\bm{\hat{x}} = \bm{\lambda}\bm{B}\bm{\hat{x}}
+\end{equation}
+
+\begin{equation}
+    \label{eq:q_evp}
+    \bm{K_s}\bm{\hat{x}} = q_{d}\bm{K_a}\bm{\hat{x}}
+\end{equation}
+
+\cref{eq:q_evp} can then be solved numerically and elegantly returns the
+divergence dynamic pressure, $q_{d}$, directly since $q_{d} = \lambda$. Note
+that the last eigen-value which pertains to the pitch angle, $\theta$, yields
+the correct divergence dynamic pressure.
+
+\section{Steady Model Verification}
+Now that a method to calculate the divergence speed is obtained, it can be
+verified with the HALE UAV reference values. Doing so results in a perfect
+match of the divergence speed with $\boxed{U_d=\SI{37.15}{\meter\per\second}}$
+for both the present analysis and the reference case.
+
+\subsection{State-Space Formulation \& Response}
+As only the stiffness matrices are involved in the divergence speed calculation
+the whole aeroelastic system can also be verified by creating state-space
+model and simulating the response of the wing. This is achieved by rewriting
+the equations of motion to isolate the acceleration terms and inverting
+the mass matrix as presented by \cref{eq:isolated_accel}.
+
+\begin{equation}
+    \label{eq:isolated_accel}
+    \bm{M_{ae}^-1\cdot M_{ae}\ddot{x}} =
+    -\bm{M_{ae}^-1\cdot C_{ae}\dot{x}}
+    -\bm{M_{ae}^-1\cdot K_{ae}x}
+\end{equation}
+
+Next, it is possible to then represent the entire system in a single state
+matrix by putting \cref{eq:isolated_accel}, defining an agumented state vector
+which includes both the velocity and displacement terms, and making use of the
+identity matrix to make the velocities equal to themselves. The result of this
+process is given below by \cref{eq:state_matrix}
+\autocite[s.4]{andrianneLectureDynamicAeroelasticity}. Additionally, the input
+matrix, $\bm{B}$, can be taken as the rigid aerodynamic matrix derived
+previously in \cref{eq:steady_aero}. Finally, the output and feed-through
+matrices can be set to identity and zero matrices respectively.
+
+\begin{equation}
+    \label{eq:state_matrix}
+    \begin{bmatrix}
+        \ddot{h} \\
+        \ddot{\theta} \\
+        \dot{h} \\
+        \dot{\theta} \\
+    \end{bmatrix} =
+    \begin{bmatrix}
+        \bm{-M_{ae}^-1 C_{ae}} &
+        \bm{-M_{ae}^-1 K_{ae}} \\
+        \bm{I} & \bm{0}
+    \end{bmatrix}
+    \begin{bmatrix}
+        \dot{h} \\
+        \dot{\theta} \\
+        h \\
+        \theta
+    \end{bmatrix}
+\end{equation}
+
+With this state-space formulation at hand, the response of the system before
+and after divergence is given by \cref{fig:s_simulations}. This clearly shows
+how divergence is a static phenomenon as the oscillations are no longer present
+at divergence. As a result, of this analysis it can also be concluded that the
+mass matrix is behaving correctly.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.5\textwidth}
+        \centering
+        \includegraphics[width=0.95\textwidth]{figures/s_simulation_20.pdf}
+        \caption{$U =\SI{20}{\meter\per\second}$, $\alpha_0=\SI{0.5}{\radian}$}
+        \label{fig:s_simulation_20}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.5\textwidth}
+        \centering
+        \includegraphics[width=0.95\textwidth]{%
+            figures/s_simulation_divergence.pdf%
+        }
+        \caption{$U_d =\SI{37.15}{\meter\per\second}$, $\alpha_0=\SI{0.5}{\radian}$}
+        \label{fig:s_simulation_divergence}
+    \end{subfigure}
+    \caption{Response of Steady Aerodynamic Model Before and at Divergence}
+    \label{fig:s_simulations}
+\end{figure}
 
 \section{Effect of Spanwise Location on Divergence}
+To justify the prioritization of the torsional natural frequency in the typical
+section location selection the resultant divergence speeds can be compared.
+When using the torsional frequency prioritized typical section, the divergence
+speed is $U_d = 37.15$ which matches the reference value exactly. However, when
+using the bending frequency prioritized typical section the divergence speed is
+$U_d = 33.70$ which is an error of \SI{-9.29}{\percent}. This is not suprising
+as divergence is a torsional phenomena. However, this shows that the effect of
+moving the typical section outboard is that it decreases the divergence speed.
+This makes sense as the unit torsional stiffness reduces with the location of
+the typical section as defined by \cref{eq:torsion_stiffness}.
 
-\section{Quasi-Steady Flutter Speed}
+\section{Quasi-Steady Stability Boundaries}
+\label{sec:conditions}
+To evaluate the stability boundaries of the quasi-steady aeroelastic system one
+must recognize that there are three possibilities given below
+\autocite[s.11]{andrianneLectureDynamicAeroelasticity}.
+
+\begin{itemize}
+    \item \textbf{Case I: Stable System} All eigen values have negative real
+    parts
+    \item \textbf{Case II: Divergence} At least one eigen-value is positive
+    \item \textbf{Case III: Flutter} A pair of complex conjugate
+    eigen values has a positive real part
+\end{itemize}
+
+These possibilities are in-line with traditional control theory where positive
+real eigen values lead to an unstable system. This is due to the real component
+of an eigen value is the damping of the system, while the imaginary component
+represents the frequency of the motion.
 
 \subsection{Aerodynamic Model}
+In order to assess the quasi-steady stability boundaries, the eigen values of
+the system must be obtained. However, first the aeroelastic model must be
+derived. This assignment requests the use of a simplified version of the
+Theodorsen aerodynamic model \autocite{Theodorsen1935}; given by
+\cref{eq:theodorsen_lift,eq:theodorsen_moment}.
 
-\subsection{Flutter Speed Calculation}
+\begin{equation}
+    \label{eq:theodorsen_lift}
+    L = -\pi\rho b^2
+    \left(U\dot{\theta} + \ddot{h} -ab\ddot{\theta}\right)
+    - 2 \pi\rho U b C\left(k\right)
+    \left[ U\theta \dot{h} \left(\frac{1}{2} - a \right)b\right]
+\end{equation}
 
-\section{Quasi-Steady Flutter Speed Verification}
+\begin{align}
+    \label{eq:theodorsen_moment}
+    M = &-\pi\rho b^2
+    \left(U\left(\frac{1}{2} - a \right)b\dot{\theta} -
+    ab\ddot{h} +\left(\frac{1}{8} + a^2\right)b^2\ddot{\theta}\right) \\ \notag
+    &+ 2 \pi\rho U b^2 \left(\frac{1}{2} + a \right) C\left(k\right)
+    \left[ U\theta \dot{h} \left(\frac{1}{2} - a \right)b\right]
+\end{align}
+
+This model makes a distinction between circulatory and non-circulatory
+aerodynamic forces. The former are caused by the influence of shed vortices in
+the wake. On the other hand, the latter are inertial terms stemming from the
+acceleration of air \autocite[p.156]{wrightIntroductionAircraftAeroelasticity}.
+What is interesting to observer here is that the circulatory terms are
+dependent on an induced angle of attack quantity, $a_i$, caused by a heave and
+pitch velocity as shown by \cref{fig:induced_aoa}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/effective_aoa.pdf}
+    \caption{Induced Angle of Attack (AoA) due to Pitch and Heave}
+    \label{fig:induced_aoa}
+\end{figure}
+
+In the derivation of the quasi-steady model, One must be careful as there are
+two versions of the quasi-steady model in scientific literature and can lead to
+ambiguity in their definition
+\autocite[p.95]{dowellModernCourseAeroelasticity2015}. However, in both
+definitions the frequency can be assumed to be low enough to neglect, therefore
+the derivation of the quasi-steady model from the Theodorsen model involved
+setting the reduced frequency, $k$, to zero. Specifically, the reduced
+frequency is correlated to the amplitude attenuation and phase-lag caused by
+the influence of shed vortices in the flow on the aerodynamic forces
+\autocite[p.156]{wrightIntroductionAircraftAeroelasticity}. This means that at
+low frequency the phase-lag is not present and the Theodorsen function
+$C\left(k\right) = 1$
+\autocite[p.158-160]{wrightIntroductionAircraftAeroelasticity}. Making this
+simplification and combining acceleration, velocity, and displacement terms
+results in the following aerodynamic model presented by \cref{eq:qs_theo}.
+
+\begin{align}
+    \label{eq:qs_theo}
+    \begin{bmatrix}
+        L \\ M
+    \end{bmatrix} =
+    \pi \rho b^2 \underbrace{\begin{bmatrix}
+        -1 & ab \\
+        ab & -\left(0.125 + a^2\right)b^2
+    \end{bmatrix}}_{\bm{M_a}}
+    &\begin{bmatrix}
+        \ddot{h} \\ \ddot{\theta}
+    \end{bmatrix} \\ \notag
+    + \pi \rho U b \underbrace{\begin{bmatrix}
+        -2 & -2\left(1 - a\right)b \\
+        2\left(a + 0.5\right)b & \left(1 - 2a\right)ab^2
+    \end{bmatrix}}_{\bm{C_a}}
+    &\begin{bmatrix}
+        \dot{h} \\ \dot{\theta}
+    \end{bmatrix} \\ \notag
+    + \pi \rho U^2 b \underbrace{\begin{bmatrix}
+        0 & - 2 \\
+        0 & \left(2a + 1\right)b
+    \end{bmatrix}}_{\bm{K_a}}
+    &\begin{bmatrix}
+        h \\ \theta
+    \end{bmatrix}
+\end{align}
+
+\subsection{Flutter and Divergence Calculation}
+To calculate the flutter and divergence boundary, a numerical root finding
+algorithm will be used along with the knowledge from the presented divergence
+and flutter conditions in \cref{sec:conditions}. However, these require the
+eigen-values of the system which can be obtained from the state matrix,
+$\bm{E}$. The state matrix for the quasi-steady model now also includes the
+damping terms which were previously zero in the steady model. Doing so, the
+developed Python code can now retrieve the eigen-values of the system at any
+velocity, $U$.\\
+
+To detect divergence, the condition to satisfy is that one of the real
+components of the eigen values is positive. As such, the boundary is when one
+of the real components is zero. Furthermore, since divergence is a static
+phenomena, we can require that the diverging eigen value is only real valued.
+The test function for divergence is then given by \cref{eq:div_test}.
+
+\begin{equation}
+    \label{eq:div_test}
+    \prod_{j=1}^n\Re \left(\lambda_j \in \Re \right) = 0
+\end{equation}
+
+Next, to detect flutter the condition to satisfy is that one of the pairs of
+complex conjugate eigen values has a positive eigen value. Compared to the case
+of testing divergence, the test function for flutter then must require that the
+eigen value with a positive real part must have an imaginary component. Once
+again the stability boundary is when the real values of the test function are
+zero as given by \cref{eq:flut_test}
+\autocite[s.19]{andrianneLectureDynamicAeroelasticity}.
+
+\begin{equation}
+    \label{eq:flut_test}
+    \prod_{j=1}^n\Re \left(\lambda_j \in \Im\right) = 0
+\end{equation}
+
+\section{Quasi-Steady Model Verification}
+Armed with the test functions derived previously, the flutter and divergence
+velocities of the quasi-steady model can now be verified against reference
+values. The results of this analysis are presented by
+\cref{tab:qs_theo_verification}, where it is clear that the Theodorsen
+quasi-steady model performs well for divergence but extremely poorly in
+assessing the flutter boundary.
+
+\begin{table}[H]
+    \centering
+    \caption{Theodorsen Quasi-Steady Aeroelastic Model Result Verification}
+    \label{tab:qs_theo_verification}
+    \begin{tabularx}{\textwidth}{p{0.275\textwidth}P{0.1\textwidth}CCC}
+    \toprule
+    \textbf{Parameter} & \textbf{Symbol} &\textbf{Present Value}
+    &\textbf{Ref. Value \autocite{howcroftEfficientAeroelasticBeam2019}}
+    & \textbf{Difference} \\
+    \midrule
+    Divergence Speed \si{\meter\per\second}
+    & $U_d$ & 37.15 & 37.15 & \SI{0.00}{\percent}\\
+    Flutter Speed \si{\meter\per\second}
+    & $U_f$ & 13.48 & 32.51 & \SI{-58.53}{\percent}\\
+    Flutter Frequency \si{\radian\per\second}
+    & $\omega_f$ & 29.04 & 22.37 & \SI{29.81}{\percent} \\ \bottomrule
+    \end{tabularx}
+\end{table}
+
+This incorrect result can be attributed to how the system is already undamped
+in the pitch degree of freedom at in $U=\SI{5}{\meter\per\second}$,
+\cref{fig:qs_5} and the damping value of the system seems to already have a
+crossing before the detected flutter velocity \cref{fig:qs_theo_frequency}.
+Surprisingly, the root-finding algorithm seems to converge on the point where
+the damping values diverge. However, examining the response of the system at
+the flutter speed, \cref{fig:qs_sim_flutter}, the pitch angle is
+growing in amplitude and hence is unstable.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.5\textwidth}
+      \centering
+      \includegraphics[width=.95\textwidth]{figures/qs_theo_frequency_diagram.pdf}
+      \subcaption{Frequency}
+      \label{fig:qs_theo_frequency}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.5\textwidth}
+      \centering
+      \includegraphics[width=.95\textwidth]{figures/qs_theo_damping_diagram.pdf}
+      \subcaption{Damping}
+      \label{fig:qs_theo_damping}
+    \end{subfigure}
+    \caption{Theodorsen Quasi-Steady Model Frequency and Damping Diagrams} %Main Caption
+    \label{fig:qs_flutter_diagram}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.5\textwidth}
+        \centering
+        \includegraphics[width=0.95\textwidth]{figures/qs_theo_simulation_5.pdf}
+        \caption{$U =\SI{5}{\meter\per\second}$, $\alpha_0=\SI{0.5}{\radian}$}
+        \label{fig:qs_5}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.5\textwidth}
+        \centering
+        \includegraphics[width=0.95\textwidth]{%
+            figures/qs_theo_simulation_flutter.pdf%
+        }
+        \caption{$U_f =\SI{13.48}{\meter\per\second}$, $\alpha_0=\SI{0.5}{\radian}$}
+        \label{fig:qs_sim_flutter}
+    \end{subfigure}
+    \caption{Response of Quasi-Steady Aerodynamic at Low and Flutter Speed}
+    \label{fig:qs_simulations}
+\end{figure}
 
 \section{Quasi-Steady Model Limitations}
+Not satisfied with the result of the Theodorsen quasi-steady aerodynamic model,
+it was deemed necessary to also try the alternative definition from
+\autocite[s.2]{andrianneLectureDynamicAeroelasticity} which also includes the
+effect of the thin airfoil theory moment coefficient at the elastic axis. This
+small change, only effects the lower-right term of the damping matrix presented
+by \cref{eq:qs_theo}. The new aerodynamic damping matrix is then given by
+\cref{eq:qs_liege}.
 
-\section{Unsteady Flutter Speed}
+\begin{equation}
+    \label{eq:qs_liege}
+    \bm{C_a} =
+    \begin{bmatrix}
+        -2 & -2\left(1 - a\right)b \\
+        2\left(a + 0.5\right)b & \left(a - a^2 + 0.5\right)b^2
+    \end{bmatrix}
+\end{equation}
+
+Although this seems like a small change, the aerodynamic damping on the pitch
+rate term has a significant impact on the behavior of the system
+\autocite[p.168]{wrightIntroductionAircraftAeroelasticity}. With this change,
+the flutter speed is increased to $\boxed{U_f =
+\SI{24.84}{\meter\per\second}}$. With this more accurate result, it is still
+clear that the quasi-aerodynamic model is not suitable to accurately determine
+the flutter boundary for this problem. This is evidenced by how quasi-steady
+aerodynamic models produce a highly conservative answer that can be as high as
+\SI{40}{\percent} lower than those predicted by fully unsteady models.
+\autocite[p.568]{bisplinghoffAeroelasticity1996}.
+
+\begin{table}[H]
+    \centering
+    \caption{Alternative Quasi-Steady Aeroelastic Model Result Verification}
+    \label{tab:qs_liege_verification}
+    \begin{tabularx}{\textwidth}{p{0.275\textwidth}P{0.1\textwidth}CCC}
+    \toprule
+    \textbf{Parameter} & \textbf{Symbol} &\textbf{Present Value}
+    &\textbf{Ref. Value \autocite{howcroftEfficientAeroelasticBeam2019}}
+    & \textbf{Difference} \\
+    \midrule
+    Divergence Speed \si{\meter\per\second}
+    & $U_d$ & 37.15 & 37.15 & \SI{0.00}{\percent}\\
+    Flutter Speed \si{\meter\per\second}
+    & $U_f$ & 24.84 & 32.51 & \SI{-23.59}{\percent}\\
+    Flutter Frequency \si{\radian\per\second}
+    & $w_f$ & 25.11 & 22.37 & \SI{12.24}{\percent}\\ \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.5\textwidth}
+      \centering
+      \includegraphics[width=.95\textwidth]{figures/qs_liege_frequency_diagram.pdf}
+      \subcaption{Frequency}
+      \label{fig:qs_liege_frequency}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.5\textwidth}
+      \centering
+      \includegraphics[width=.95\textwidth]{figures/qs_liege_damping_diagram.pdf}
+      \subcaption{Damping}
+      \label{fig:qs_liege_damping}
+    \end{subfigure}
+    \caption{Alternative Quasi-Steady Model Frequency and Damping Diagrams} %Main Caption
+    \label{fig:qs_liege_flutter_diagram}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.5\textwidth}
+      \centering
+      \includegraphics[width=.95\textwidth]{figures/qs_theo_damping_ratio_diagram.pdf}
+      \subcaption{Theodorsen Model}
+      \label{fig:qs_theo_damping_ratio}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.5\textwidth}
+      \centering
+      \includegraphics[width=.95\textwidth]{figures/qs_liege_damping_ratio_diagram.pdf}
+      \subcaption{Alternative Model}
+      \label{fig:qs_liege_damping_ratio}
+    \end{subfigure}
+    \caption{Comparison of Theodorsen and Alternative Quasi-Steady Damping Ratio} %Main Caption
+    \label{fig:qs_damping_ratio_comp}
+\end{figure}
+
+\section{Unsteady Stability Boundaries}
+To achieve a more accurate flutter speed estimate the effect of the aerodynamic
+lag states must be modelled. Although many methods exist in literature, one of
+the aims during this assignment was to get a better grasp of the response of a
+wing during flight. Therefore, a method which is compatible with a state-space
+representation was desired. One such method is to use the indicial function
+approximation which transforms the Theodorsen function, $C(k)$, into the time
+domain. Thus, it not only allows for the visualization of the system response
+in the time domain, but it also increases the code-similarity by
+\textbf{allowing use of the flutter and divergence speed calculation method}
+discussed previously in \cref{sec:conditions} Unfortunately, since it makes use
+of the Wagner function which is an approximation of the Theodorsen function in
+the time domain, it is not as exact of a solution as that which can be obtained
+by use of a mode-tracking method such as the k or pk methods.
 
 \subsection{Indicial Function Approximation}
+The Theodore Function which is composed of transcendental Henkel functions can
+be transformed into time-domain using the Wagner function which starts at a
+value of 0.5 and slowly progresses to unity as the the airfoil moves further
+away from the starting point \cref{eq:wagner}.
 
-\subsection{Flutter Speed Calculation}
+\begin{equation}
+    \label{eq:wagner}
+    \phi\left(t^*\right) = 1
+    - \Psi_1 e^{-\epsilon_1 t^*}
+    - \Psi_2 e^{-\epsilon_2 t^*}
+\end{equation}
 
-\section{Unsteady Flutter Speed Verification}
+The Wagner function is a function of reduced time, $t^*$, which expresses the
+number of chord-lengths traversed by the airfoil \cref{eq:reduced_time}. This
+represents the phase-lag associated with unsteady aerodynamics as the lift
+force gradually increases to its steady-state value.
+
+\begin{equation}
+    \label{eq:reduced_time}
+    t^* = \frac{Ut}{b}
+\end{equation}
+
+The coefficients of the
+Wagner function are given below as taken from
+\autocite[s.29]{andrianneLectureDynamicAeroelasticity}.
+
+\begin{align*}
+      \Psi_1 &= 0.651 \pi \\
+      \Psi_2 &= 0.335 \pi \\
+      \epsilon_1 &= 0.0455 \\
+      \epsilon_2 &= 0.3000 \\
+\end{align*}
+
+The derivation of the indicial function approximation is quite complex and
+lengthy and for the sake of brevity has been left out of this report. In
+essence, involves convoluting the Theodorsen function with the Wagner function
+and using the Leibnitz integration rule to obtain so-called ``aerodynamic lag
+states'', $w_1, \dots, w_4$, which are a mathematical trick used to produce a
+closed-form solution. The result of this derivation is the unsteady aerodynamic
+model presented below by \cref{eq:us}, The values of inner aeroelastic
+matrices can be obtained from the Python code in \cref{app:listing} or by
+referring to \autocite[s.29]{andrianneLectureDynamicAeroelasticity}.
+
+\begin{equation}
+    \label{eq:us}
+    \begin{bmatrix}
+        \ddot{h} \\
+        \ddot{\theta} \\
+        \dot{h} \\
+        \dot{\theta} \\
+        w_1 \\
+        w_2 \\
+        w_3 \\
+        w_4 \\
+    \end{bmatrix} =
+    \begin{bmatrix}
+        \bm{-M_{ae}^-1 C_{ae}} &
+        \bm{-M_{ae}^-1 K_{ae}} &
+        \bm{-M_{ae}^-1 W} \\
+        \bm{I} & \bm{0} & \bm{0} \\
+        \bm{0} & \bm{W_0} & \dots\\
+    \end{bmatrix}
+    \begin{bmatrix}
+        \dot{h} \\
+        \dot{\theta} \\
+        h \\
+        \theta \\
+        w_1 \\
+        w_2 \\
+        w_3 \\
+        w_4 \\
+    \end{bmatrix}
+\end{equation}
+
+\section{Unsteady Model Verification}
+With the fully unsteady indicial function approximation method the calculated
+flutter speed of $U_f = \SI{32.77}{\meter\per\second}$ is much more accurate
+with a difference of only \SI{0.8}{\percent} with respect to the reference
+value. Looking at the damping ratio of the system \cref{fig:us_damping_ratio}
+it is also noticeable when the flutter boundary occurs as it is when the system
+becomes undamped with a damping ratio of $\xi = 0$
+\autocite[s.7]{andrianneLectureDynamicAeroelasticity}. Since this is the only
+point in the flight envelope that the damping ratio is equal to zero, the root
+finding algorithm to detect the flutter speed is stable.
+
+\begin{table}[H]
+    \centering
+    \caption{Unsteady Aeroelastic Model Result Verification}
+    \label{tab:us_verification}
+    \begin{tabularx}{\textwidth}{p{0.275\textwidth}P{0.1\textwidth}CCC}
+    \toprule
+    \textbf{Parameter} & \textbf{Symbol} &\textbf{Present Value}
+    &\textbf{Ref. Value \autocite{howcroftEfficientAeroelasticBeam2019}}
+    & \textbf{Difference} \\
+    \midrule
+    Divergence Speed \si{\meter\per\second}
+    & $U_d$ & 37.15 & 37.15 & \SI{0.00}{\percent}\\
+    Flutter Speed \si{\meter\per\second}
+    & $U_f$ & 32.77 & 32.51 & \SI{0.80}{\percent}\\
+    Flutter Frequency \si{\radian\per\second}
+    & $w_f$ & 21.87 & 22.37 & \SI{-2.23}{\percent} \\ \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[b]{0.5\textwidth}
+      \centering
+      \includegraphics[width=.95\textwidth]{figures/us_frequency_diagram.pdf}
+      \subcaption{Frequency}
+      \label{fig:us_frequency}
+    \end{subfigure}%
+    \begin{subfigure}[b]{0.5\textwidth}
+      \centering
+      \includegraphics[width=.95\textwidth]{figures/us_damping_diagram.pdf}
+      \subcaption{Damping}
+      \label{fig:us_damping}
+    \end{subfigure}
+    \caption{Unsteady Model Frequency and Damping Diagrams} %Main Caption
+    \label{fig:us_flutter_diagram}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/us_damping_ratio_diagram.pdf}
+    \caption{Unsteady Aeroelastic Model Damping Ratio Diagram}
+    \label{fig:us_damping_ratio}
+\end{figure}
 
 \section{Unsteady Model Justification}
+As it is known that quasi-steady models are not sufficiently accurate for
+flutter and gust response calculations when the circulatory lift effects are
+significant, it is important to quantify when this takes place. The phase-lag
+caused by the circulatory lift takes a maximum value when the reduced frequency
+$k=0.3$ \autocite[p.157]{wrightIntroductionAircraftAeroelasticity}. Using the
+reduced frequency expression given below by \cref{eq:reduced_frequency}, the
+value for this present analysis was found to be $k=0.333$, which signifies
+highly unsteady flow and justifies the use of the unsteady aerodynamic model.
+This can also be used to explain why the quasi-steady aerodynamic model
+produced such poor results with respect to the reference values.
+
+\begin{equation*}
+    \label{eq:reduced_frequency}
+    k = \frac{\omega b}{U}
+\end{equation*}
 
 \section{Modifications to Increase Flutter Speed}
+Generally, increasing aeroelastic stability requires increasing the inertial
+forces that oppose the excitation of the system. Although, alternatives exist
+such as increasing the structural stiffness, those methods typically increase
+the mass and complexity of the design
+\autocite[p.15]{bontonMeasuringMassProperties2000}. Therefore, the preferred
+method is to adjust the mass properties to tune these inertial forces that
+oppose the exciting force. A typical method of doing so on control surfaces is
+through mass balancing, where the center of gravity is shifted forward to
+increase the flutter speed. \cref{fig:aileron_balancing} shows an example of
+how such a forward translation of the center of gravity can be achieved through
+use of a attached mass. However, to gain a more comprehensive insight into how
+Modifications that can be made to a wingbox increase the flutter speed, this
+section will conduct a Finite Element Model (FEM) sensitivity analysis and
+subsequent optimization to determine an improved design.
 
-\subsection{Wingbox Geometry}
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\textwidth]{figures/control_surface_balancing.pdf}
+    \caption{
+        Control Surface Balancing Options
+        \autocite{bingelisControlSurfaceBalancing}
+    }
+    \label{fig:aileron_balancing}
+\end{figure}
 
-\subsection{Wingbox Finite Element Model}
+\subsection{Idealized Wingbox Geometry Used in Analysis}
+The idealized wingbox geometry selected for this analysis presented below
+by \cref{fig:wingbox_geometry}. The wingbox takes the form of the symmetric
+airfoil profile on the top and bottom skin connected by straight spars at
+the front and rear. Such a geometry is typically used in conceptual wingbox
+design and sizing \autocite[p.540]{ajajConceptualWingboxWeight2013}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/wingbox_drawing.pdf}
+    \caption{Idealized Wingbox Geometry}
+    \label{fig:wingbox_geometry}
+\end{figure}
 
 \subsection{Initial Wingbox Derivation}
+As the goal of the assignment is to understand the effect of structural
+modifications on the stability boundaries, the exact design of the wingbox is
+not significant. With that said, it is still required to somehow derive a
+baseline design that enables the exploration of the structural sensitivities.
+Furthermore, since information on the HALE UAV wing is not sufficient to
+constrain the wingbox design space to a singular design there are two
+approaches that are possible. The first approach is to define realistic
+material properties of the wingbox and find a suitable geometry to end up with
+the same divergence and flutter speeds as the refernce values.\\
+
+Alternatively, the second approach, that is used in this present analysis, is
+to define a suitable geometry first and then derive a hypothesized material
+based on the inertial properties of the geometry. Therefore, the first step in
+this method is to find a suitable geometry for the wingbox. A bounded
+optimization problem is set-up to minimize the offset between the elastic axis
+and center of gravity with respect to their reference values,
+\cref{eq:geometric_opt}. The initial values and bounds of the wingbox design
+vector $v_{wb}$ are given by \cref{tab:design_bounds}.
+
+\begin{equation}
+    \label{eq:geometric_opt}
+    \text{Minimize:} \hspace{2em}
+        f\left(v_{wb}\right) =
+        \left(x_a - a_{a,exact}\right)^2 +
+        \left(x_{cg} - a_{cg,exact}\right)^2
+\end{equation}
+
+\begin{table}[H]
+    \centering
+    \caption{Wingbox Design Vector $v_{wb}$ Initial Value and Bounds}
+    \label{tab:design_bounds}
+    \begin{tabularx}{\textwidth}{p{0.35\textwidth}CCCC} %'L' for Left Aligned, 'C' for Centered, 'R' for Right Aligned
+    \toprule
+    \textbf{Variable} & \textbf{Symbol} & \textbf{Initial} &\textbf{Lower}
+    & \textbf{Upper}\\
+    \midrule
+    Front Spar Location & $x_{fs}$ & 0.250 & 0.100 & 0.450 \\
+    Rear Spar Location & $x_{rs}$ & 0.700 & 0.550 & 0.950\\
+    Front Spar Thickness & $t_{fs}$ & 0.005 & 0.001 & 0.050\si{-} \\
+    Rear Spar Thickness & $t_{rs}$ & 0.040 & 0.001 & 0.050 \\
+    Skin Thickness & $t_{skin}$ & 0.010 & 0.001 & 0.050 \\ \bottomrule
+    \end{tabularx}
+\end{table}
+
+As HALE UAV aircraft typically have thick airfoils
+\autocite{hallissyHighfidelityAeroelasticAnalysis2011}, a NACA 0015 symmetric
+profile is chosen as the outer moldline of the wingbox. Due to this curved
+airfoil geometry, the section properties are then retrieved by a Finite Element
+Model (FEM) using the \texttt{sectionproperties} Python package
+\autocite{vanleeuwenSectionproperties}. In order to speed up the convergence of
+the optimizer, the skin thickness was not allowed to go below
+\SI{1}{\milli\meter}. Otherwise, the number of cells required to accurately
+represent the geometry grow too large, and iteration times quickly climb to
+upwards of a few minutes. Running this optimization then produces the wingbox
+geometry given by \cref{fig:geometric_wingbox_geom} with convergence history
+given by \cref{fig:geometric_wingbox_hist}. The final values the typical
+section locations as well as the design vector is provided
+\cref{tab:matched_ts_values,tab:geometric_wbox_values}.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/geometric_wbox_opt_centroids.pdf}
+    \caption{FEM Mesh and Geometry of Geometrically Matched Wingbox}
+    \label{fig:geometric_wingbox_geom}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/geometric_wbox_opt_history.pdf}
+    \caption{Convergence History of Geometrically Matched Wingbox}
+    \label{fig:geometric_wingbox_hist}
+\end{figure}
+
+\begin{table}[H]
+    \centering
+    \caption{Final Values of the Matched Typical Section Locations}
+    \label{tab:matched_ts_values}
+    \begin{tabularx}{\textwidth}{CCCC} %'L' for Left Aligned, 'C' for Centered, 'R' for Right Aligned
+    \toprule
+    \textbf{Parameter} & \textbf{Calculated Value} & \textbf{Target Value}
+    & \textbf{Difference} \\
+    \midrule
+    $x_a$ & 0.4998 & 0.5000 & \SI{-0.04}{\percent}\\
+    $x_{cg}$ & 0.4999 & 0.5000 & \SI{-0.02}{\percent}\\ \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Geometrically Matched Wingbox Geometric Parameters}
+    \label{tab:geometric_wbox_values}
+    \begin{tabularx}{\textwidth}{p{0.35\textwidth}CCC} %'L' for Left Aligned, 'C' for Centered, 'R' for Right Aligned
+    \toprule
+    \textbf{Parameter} & \textbf{Symbol} & \textbf{Value} &\textbf{Units}\\
+    \midrule
+    Front Spar Location & $x_{fs}$ & 0.234 & \si{-} \\
+    Rear Spar Location & $x_{rs}$ & 0.684 & \si{-} \\
+    Front Spar Thickness & $t_{fs}$ & 0.005 & \si{-} \\
+    Rear Spar Thickness & $t_{rs}$ & 0.039 & \si{-} \\
+    Skin Thickness & $t_{skin}$ & 0.009 & \si{-} \\ \bottomrule
+    \end{tabularx}
+\end{table}
 
 \subsection{Sensitivity Analysis}
+The reason for conducting such a relatively high fidelity analysis was to gain
+insight into how the design variables of the idealized wingbox geometry affect
+the stability boundary of the wing. A way for engineers to gain a better
+understanding of a problem is to then perform a sensitivity analysis. The most
+direct sensitivity to measure is how the wingbox variables affect the
+stability boundaries, \cref{fig:wingbox_aero_sens}. Here, one can see that the
+highest sensitivity is measured by the location of the front and rear spars
+which drastically change the location of the elastic axis and center of
+gravity. If the front spar is moved backward both the divergence and flutter
+speeds decrease. On the other hand if the rear spar is moved backward the
+divergence and flutter speeds increase.\\
+
+To understand this behavior better it is important to relate the geometric
+wingbox parameters to how they influence the typical section parameters,
+\cref{tab:wingbox_ts_sensitivity}, and those in turn to their effect on the
+\cref{fig:ts_aero_sens}. Here we can see that the front spar location
+has the highest influence on decreasing the mass of the airfoil which in turn
+should increase the flutter speed. However, moving the front spar backward
+causes center of gravity to shift aft as well. Looking at
+\cref{fig:ts_aero_sens}, this shows us that the center of gravity position has
+the highest effect on the flutter speed, which confirms the aforementioned
+effect of mass balanced ailerons.
+
+\begin{table}[H]
+    \centering
+    \caption{Response of Typical Section to a 1\% Increase in Wingbox Variables}
+    \label{tab:wingbox_ts_sensitivity}
+    \begin{tabularx}{\textwidth}{CCCCCC} %'L' for Left Aligned, 'C' for Centered, 'R' for Right Aligned
+    \toprule
+    \textbf{Response} & $\uparrow\bm{x_{fs}}$ & $\uparrow\bm{x_{rs}}$ & $\uparrow\bm{t_{fs}}$ &
+    $\uparrow\bm{t_{rs}}$ & $\uparrow\bm{t_{skin}}$ \\
+    \midrule
+    $\bm{m_a}$ &
+    \SI{-0.435}{\percent} &
+    \SI{0.447}{\percent} &
+    \SI{-0.049}{\percent} &
+    \SI{0.165}{\percent} &
+    \SI{0.522}{\percent} \\
+    $\bm{I_\theta^*}$ &
+    \SI{-0.274}{\percent} &
+    \SI{0.579}{\percent} &
+    \SI{0.000}{\percent} &
+    \SI{0.015}{\percent} &
+    \SI{0.067}{\percent} \\
+    $\bm{x_a}$ &
+    \SI{0.252}{\percent} &
+    \SI{0.169}{\percent} &
+    \SI{-0.151}{\percent} &
+    \SI{0.045}{\percent} &
+    \SI{0.086}{\percent} \\
+    $\bm{x_{cg}}$ &
+    \SI{0.211}{\percent} &
+    \SI{0.569}{\percent} &
+    \SI{-0.028}{\percent} &
+    \SI{0.077}{\percent} &
+    \SI{-0.071}{\percent} \\
+    $\bm{EI}$ &
+    \SI{-0.874}{\percent} &
+    \SI{0.072}{\percent} &
+    \SI{-0.274}{\percent} &
+    \SI{-0.244}{\percent} &
+    \SI{0.441}{\percent} \\
+    $\bm{GJ}$ &
+    \SI{-1.392}{\percent} &
+    \SI{2.937}{\percent} &
+    \SI{-0.004}{\percent} &
+    \SI{0.076}{\percent} &
+    \SI{0.341}{\percent} \\ \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/wingbox_aeroelastic_sensitivity.pdf}
+    \caption{Response of Aeroelastic Speeds to a \SI{1}{\percent} Increase in
+    Wingbox Variables}
+    \label{fig:wingbox_aero_sens}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/typical_section_aeroelastic_sensitivity.pdf}
+    \caption{Response of Aeroelastic Speeds to a \SI{1}{\percent} Increase in
+    Typical Section Variables}
+    \label{fig:ts_aero_sens}
+\end{figure}
+
+\subsection{Proposed Modification}
+In the highly coupled and non-linear design space presented previously, it is
+difficult for a human to make decisions that will guarantee that the flutter
+frequency matches the divergence speed. However, looking at
+\cref{fig:wingbox_aero_sens} it is clear that one way to achieve this
+is to increase the skin thickness which increases the flutter speed more than
+the divergence speed. Additionally, this modification must be coupled with
+a decrease in rear spar location which will decrease the flutter speed less
+that a more severe decrease to the divergence speed.
 
 \section{Effect of Modifications on Divergence}
 
-\section{Optimized Flutter and Divergence Speed}
+As discussed, the proposed modification is to \textbf{increase the skin
+thickness} while \textbf{move the rear spar forward}. By fine tuning the amount
+by which these two modifications are applied it should be possible to increase
+the flutter speed while keeping the divergence speed constant.
+
+\section{Aeroelastic Wingbox Optimization}
+
+To answer the question of whether it is possible to match the divergence and
+flutter speed exactly, a second optimization problem is defined making use of
+the objective function given below by \cref{eq:aeroelastic_opt}. The resultant
+geometry of the aeroelastic optimization of the wingbox along with the
+convergence history is provided below by \cref{fig:aero_wingbox_geom} and
+\cref{fig:aero_wingbox_hist} respectively.
+
+\begin{equation}
+    \label{eq:aeroelastic_opt}
+    \text{Minimize:} \hspace{2em}
+        f\left(x\right) =
+        \left(U_d - U_{d,exact}\right)^2 +
+        \left(U_f - U_{d,exact}\right)^2 \\[1em]
+\end{equation}
+
+Looking at the final achieved values for the flutter and divergence speeds,
+\cref{tab:matched_wbox_values} it is clear that indeed it is possible to match
+the flutter speed to the divergence speed. Furthermore, even though the
+optimizer utilized more than just the proposed modifications to achieve this
+result, the optimizer did indeed increase the skin thickness from the initial
+value of 0.009 to 0.017. Additionally, the optimizer also heavily modified the
+location and thickness of the rear spar by shifting it to the most frontal
+position of $x_{fs} = 0.5$. For comparison purposes, the final values of the
+aeroelastically optimized wingbox are presented by
+\cref{tab:aeroelastic_wbox_values,tab:aeroelastic_ts_values} below which can be
+contrasted with the geometrically optimized wingbox and initial typical section
+respectively.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.95\textwidth]{figures/aeroelastic_wbox_opt_centroids.pdf}
+    \caption{FEM Mesh and Geometry of Aeroelastically Optimized Wingbox}
+    \label{fig:aero_wingbox_geom}
+\end{figure}
+
+\begin{table}[H]
+    \centering
+    \caption{Final Values of the Matched Flutter and Divergence Speeds}
+    \label{tab:matched_wbox_values}
+    \begin{tabularx}{\textwidth}{CCCC} %'L' for Left Aligned, 'C' for Centered, 'R' for Right Aligned
+    \toprule
+    \textbf{Parameter} & \textbf{Calculated Value} &\textbf{Target
+    Value} & \textbf{Difference} \\
+    \midrule
+    $U_d$ & 37.12 & 37.15 & \SI{-0.08}{\percent}\\
+    $U_f$ & 37.14 & 37.15 & \SI{-0.03}{\percent}\\ \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{figures/aeroelastic_wbox_opt_history.pdf}
+    \caption{Convergence History of Aeroelastically Optimized Wingbox}
+    \label{fig:aero_wingbox_hist}
+\end{figure}
+
+\begin{table}[H]
+    \centering
+    \caption{Aeroelastically Optimized Wingbox Geometric Parameters}
+    \label{tab:aeroelastic_wbox_values}
+    \begin{tabularx}{\textwidth}{p{0.35\textwidth}CCC} %'L' for Left Aligned, 'C' for Centered, 'R' for Right Aligned
+    \toprule
+    \textbf{Parameter} & \textbf{Symbol} & \textbf{Value} &\textbf{Units}\\
+    \midrule
+    Front Spar Location & $x_{fs}$ & 0.217 & \si{-} \\
+    Rear Spar Location & $x_{rs}$ & 0.550 & \si{-} \\
+    Front Spar Thickness & $t_{fs}$ & 0.008 & \si{-} \\
+    Rear Spar Thickness & $t_{rs}$ & 0.041 & \si{-} \\
+    Skin Thickness & $t_{skin}$ & 0.017 & \si{-} \\ \bottomrule
+    \end{tabularx}
+\end{table}
+
+\begin{table}[H]
+    \centering
+    \caption{Aeroleastically Optimized Wingbox Typical Section Parameters}
+    \label{tab:aeroelastic_ts_values}
+    \begin{tabularx}{\textwidth}{p{0.35\textwidth}CCC} %'L' for Left Aligned, 'C' for Centered, 'R' for Right Aligned
+    \toprule
+    \textbf{Parameter} & Symbol & \textbf{Value} &\textbf{Units}\\
+    \midrule
+    Airfoil Mass & $m_a$ & 0.958 & \si{\kilogram\per\meter}\\
+    Polar Mass Moment of Inertia & $I_\theta^*$ & 0.095 & \si{\kilogram\meter}\\
+    Elastic Axis Location & $x_a$ & 0.439 & \si{-} \\
+    Center of Gravity & $x_{cg}$ & 0.409 & \si{-} \\
+    Bending Rigidity & $EI$ & 26809 & \si{\newton\meter\squared} \\
+    Torsional Rigidity & $GJ$ & 7542 & \si{\newton\meter\squared} \\ \bottomrule
+    \end{tabularx}
+\end{table}
